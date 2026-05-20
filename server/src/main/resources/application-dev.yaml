@@ -1,0 +1,15 @@
+spring:
+  config:
+    activate:
+      # 开发环境 profile
+      on-profile: dev
+
+server:
+  # 开发环境默认端口（本地启动用）
+  port: 8888
+
+logging:
+  level:
+    root: INFO
+    # 开发环境建议开启项目包 DEBUG，方便排查问题
+    io.arknights: DEBUG

@@ -1,0 +1,16 @@
+spring:
+  application:
+    name: dateOrFriends-server
+
+  profiles:
+    # 默认启用开发环境配置（对应 application-dev.yaml）
+    active: dev
+
+  autoconfigure:
+    exclude:
+      # 当前阶段未接入数据库，先禁用 DataSource 自动配置；接入数据库后删除本项并补齐 spring.datasource.*
+      - org.springframework.boot.jdbc.autoconfigure.DataSourceAutoConfiguration
+
+  main:
+    # 允许循环依赖（建议仅开发阶段使用；后续可通过拆分依赖/调整设计移除）
+    allow-circular-references: true
