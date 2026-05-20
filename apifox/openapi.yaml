@@ -1,0 +1,361 @@
+openapi: 3.0.3
+info:
+  title: dateOrFriends API
+  version: 0.0.1-SNAPSHOT
+  description: |
+    dateOrFriends 后端接口文档（可直接导入 Apifox：导入 -> OpenAPI）。
+
+    统一返回结构：{ code, message, data }
+servers:
+  - url: http://localhost:8888
+security:
+  - bearerAuth: []
+tags:
+  - name: Auth
+    description: 认证接口（管理员/用户共用）
+  - name: User
+    description: 用户端接口
+  - name: Admin
+    description: 管理端接口（需要 ADMIN 角色）
+paths:
+  /auth/login:
+    post:
+      tags: [Auth]
+      summary: 登录
+      description: 统一登录入口（管理员/普通用户共用），成功后签发 Access/Refresh 双令牌
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+            examples:
+              admin:
+                value:
+                  account: admin
+                  password: admin
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseTokenResponse'
+        '400':
+          description: 参数不合法
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseError'
+        '500':
+          description: 服务端错误
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseError'
+  /auth/refresh:
+    post:
+      tags: [Auth]
+      summary: 刷新令牌
+      description: 仅 Refresh Token 可用；刷新后旧 Refresh 立即作废（Redis + 黑名单）
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RefreshRequest'
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseTokenResponse'
+        '400':
+          description: 参数不合法
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseError'
+        '500':
+          description: 服务端错误
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseError'
+  /auth/logout:
+    post:
+      tags: [Auth]
+      summary: 登出
+      description: 主动吊销当前 Access Token；可选携带 refreshToken 以同时吊销该 Refresh Token
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LogoutRequest'
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseVoid'
+        '401':
+          description: 未登录或令牌无效
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseError'
+        '500':
+          description: 服务端错误
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseError'
+  /auth/logout-all:
+    post:
+      tags: [Auth]
+      summary: 登出全部
+      description: 吊销该用户全部端的 Access/Refresh（tokenVersion 机制使历史令牌即时失效）
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseVoid'
+        '401':
+          description: 未登录或令牌无效
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseError'
+        '500':
+          description: 服务端错误
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseError'
+  /user/ping:
+    get:
+      tags: [User]
+      summary: 用户端连通性探针
+      description: 需要登录（Bearer Access Token）
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: 成功
+          content:
+            text/plain:
+              schema:
+                type: string
+              examples:
+                ok:
+                  value: pong(user)
+        '401':
+          description: 未登录或令牌无效
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseError'
+  /admin/ping:
+    get:
+      tags: [Admin]
+      summary: 管理端连通性探针
+      description: 需要登录且必须为 ADMIN 角色（/admin/** 强制 ADMIN）
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: 成功
+          content:
+            text/plain:
+              schema:
+                type: string
+              examples:
+                ok:
+                  value: pong(admin)
+        '401':
+          description: 未登录或令牌无效
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseError'
+        '403':
+          description: 无权限（非 ADMIN）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseError'
+  /admin/auth/revoke/{userId}:
+    post:
+      tags: [Admin]
+      summary: 吊销指定用户全部令牌
+      description: 管理员接口：吊销指定 userId 的全部 Access/Refresh（tokenVersion + refresh set 清理）
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+          description: 用户 ID
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseVoid'
+        '401':
+          description: 未登录或令牌无效
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseError'
+        '403':
+          description: 无权限（非 ADMIN）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseError'
+        '500':
+          description: 服务端错误
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseError'
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  schemas:
+    LoginRequest:
+      type: object
+      required: [account, password]
+      properties:
+        account:
+          type: string
+          description: 登录账号（user.account）
+          example: admin
+        password:
+          type: string
+          description: 登录密码（明文；后端 BCrypt 验证）
+          example: admin
+    RefreshRequest:
+      type: object
+      required: [refreshToken]
+      properties:
+        refreshToken:
+          type: string
+          description: Refresh Token（JWT）
+          example: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+    LogoutRequest:
+      type: object
+      properties:
+        refreshToken:
+          type: string
+          nullable: true
+          description: 可选；同时吊销该 Refresh Token（JWT）
+          example: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+    TokenResponse:
+      type: object
+      required:
+        - tokenType
+        - accessToken
+        - accessExpiresIn
+        - refreshToken
+        - refreshExpiresIn
+        - userId
+        - role
+        - weight
+      properties:
+        tokenType:
+          type: string
+          description: 固定为 Bearer
+          example: Bearer
+        accessToken:
+          type: string
+          description: Access Token（2 小时）
+        accessExpiresIn:
+          type: integer
+          format: int32
+          description: Access Token 有效期（秒）
+          example: 7200
+        refreshToken:
+          type: string
+          description: Refresh Token（15 天）
+        refreshExpiresIn:
+          type: integer
+          format: int32
+          description: Refresh Token 有效期（秒）
+          example: 1296000
+        userId:
+          type: integer
+          format: int64
+          description: 用户 ID（user.id）
+          example: 1
+        role:
+          type: string
+          description: 角色（USER / ADMIN）
+          example: ADMIN
+        weight:
+          type: integer
+          format: int32
+          description: 权限权重（数值越大权限越高）
+          example: 100
+    ApiResponseTokenResponse:
+      type: object
+      required: [code, message, data]
+      properties:
+        code:
+          type: integer
+          format: int32
+          description: 0=成功；非0=失败
+          example: 0
+        message:
+          type: string
+          example: ok
+        data:
+          $ref: '#/components/schemas/TokenResponse'
+    ApiResponseVoid:
+      type: object
+      required: [code, message, data]
+      properties:
+        code:
+          type: integer
+          format: int32
+          description: 0=成功；非0=失败
+          example: 0
+        message:
+          type: string
+          example: ok
+        data:
+          nullable: true
+    ApiResponseError:
+      type: object
+      required: [code, message, data]
+      properties:
+        code:
+          type: integer
+          format: int32
+          description: 业务错误码（例如 1000 参数不合法、1001 未授权、1002 无权限、2000 账号不存在 等）
+          example: 1001
+        message:
+          type: string
+          description: 错误信息
+          example: 未登录或令牌无效
+        data:
+          nullable: true

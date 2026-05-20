@@ -44,5 +44,6 @@ server/src/main/resources/sql/
 
 ## 6. 示例
 
-参考：`modules/admin/ping.sql`
+- 管理端示例：`modules/admin/ping.sql`
+- 用户/管理员账户表示例：`modules/user/users.sql`
 

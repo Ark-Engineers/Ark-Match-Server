@@ -1,0 +1,9 @@
+spring:
+  config:
+    activate:
+      on-profile: nodb
+
+  autoconfigure:
+    exclude:
+      - org.springframework.boot.jdbc.autoconfigure.DataSourceAutoConfiguration
+

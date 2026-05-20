@@ -3,6 +3,15 @@ spring:
     activate:
       # 开发环境 profile
       on-profile: dev
+  datasource:
+    url: ${DB_URL:jdbc:mysql://i.leningcloud.com:3306/ark_match?useUnicode=true&characterEncoding=utf8&useSSL=false&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true}
+    username: ark_match
+    password: ark123
+  data:
+    redis:
+      host: i.leningcloud.com
+      port: 6379
+      password: shengda
 
 server:
   # 开发环境默认端口（本地启动用）
@@ -13,3 +22,23 @@ logging:
     root: INFO
     # 开发环境建议开启项目包 DEBUG，方便排查问题
     io.arknights: DEBUG
+
+mybatis:
+  configuration:
+    map-underscore-to-camel-case: true
+
+app:
+  jwt:
+    secret: ${JWT_SECRET:dev-jwt-secret-change-me}
+    issuer: ${JWT_ISSUER:dateOrFriends}
+    access-ttl-seconds: 7200
+    refresh-ttl-seconds: 1296000
+  security:
+    login-fail-lock-threshold: 5
+    login-fail-lock-minutes: 15
+  admin:
+    bootstrap:
+      account: admin
+      password: admin
+      email: admin@admin.com
+      nickname: 管理员

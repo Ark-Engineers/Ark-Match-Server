@@ -16,6 +16,10 @@ public class PingController {
         this.pingService = pingService;
     }
 
+    /**
+     * 用户端存活探针（用于校验登录态与基础连通性）。
+     * 权限要求：需要登录（Access Token 有效即可）。
+     */
     @GetMapping("/ping")
     public Mono<String> ping() {
         return pingService.ping();

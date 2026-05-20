@@ -16,6 +16,10 @@ public class PingController {
         this.pingService = pingService;
     }
 
+    /**
+     * 管理端存活探针。
+     * 权限要求：仅 ADMIN 可访问（由全局权限拦截控制）。
+     */
     @GetMapping("/ping")
     public Mono<String> ping() {
         return pingService.ping();

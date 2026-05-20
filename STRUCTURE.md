@@ -23,17 +23,39 @@ dateOrFriends/
             tools/
               startup/
                 StartupSuccessLogger.java
+                AdminBootstrap.java
+              jwt/
+                JwtProperties.java
+                JwtPrincipal.java
+                JwtService.java
+                JwtTokenType.java
+              security/
+                AuthWebFilter.java
+                PasswordConfig.java
+                Role.java
+                SecurityProperties.java
+                token/
+                  RedisTokenStore.java
               softdelete/
                 SoftDeletable.java
                 SoftDeleteUtils.java
             modules/
               admin/
+                auth/
+                  controller/
+                  service/
+                    impl/
                 ping/
                   controller/
                   service/
                     impl/
                   mapper/
               user/
+                auth/
+                  controller/
+                  service/
+                    impl/
+                  mapper/
                 ping/
                   controller/
                   service/
@@ -41,11 +63,15 @@ dateOrFriends/
                   mapper/
         resources/
           application.yaml
+          application-dev.yaml
+          application-nodb.yaml
           sql/
             README.md
             modules/
               admin/
                 ping.sql
+              user/
+                users.sql
 ```
 
 ## 3. 包命名约定
@@ -113,3 +139,11 @@ dateOrFriends/
 - SQL 文件必须按模块归档到：`server/src/main/resources/sql/modules/{admin|user}/`
 - 每个 SQL 文件必须包含字段备注（MySQL：列级 `COMMENT` + 表级 `COMMENT`）
 - 详细规则见：[sql/README.md](file:///c:/Users/MrLee/Desktop/%E7%BD%97%E5%BE%B7%E4%B9%8B%E9%97%A8/%E7%A8%8B%E5%BA%8F/dateOrFriends/server/src/main/resources/sql/README.md)
+
+## 9. Controller 备注约定（重要）
+
+- 每个 Controller 的每个 API 方法必须写备注（JavaDoc），说明：
+  - 接口用途（一句话）
+  - 权限要求（例如：仅 ADMIN / 需要登录 / 公开接口）
+  - 关键约束（例如：Refresh Token 仅用于刷新，不得用于业务鉴权）
+- README 中必须同步维护接口备注（确保文档可独立部署参考）
