@@ -35,6 +35,16 @@ public class AuthController {
     }
 
     /**
+     * 用户注册（公共接口，无需登录）。
+     * 成功后创建普通用户账号（role=USER，密码以 BCrypt 哈希存储）。
+     */
+    @PostMapping("/register")
+    public Mono<ApiResponse<RegisterResponse>> register(@Valid @RequestBody RegisterRequest request, ServerWebExchange exchange) {
+        var ip = resolveIp(exchange);
+        return authService.register(request.account(), request.email(), request.password(), request.nickname(), ip).map(ApiResponse::ok);
+    }
+
+    /**
      * 刷新令牌入口（仅 Refresh Token 可用）。
      * 每次刷新都会签发新的 Access/Refresh，并作废旧 Refresh（Redis 立即失效 + 黑名单）。
      */

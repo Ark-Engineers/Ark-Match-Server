@@ -1,6 +1,7 @@
 package io.arknights.dateorfriends.modules.user.auth.service.impl;
 
 import io.arknights.dateorfriends.modules.user.auth.controller.TokenResponse;
+import io.arknights.dateorfriends.modules.user.auth.controller.RegisterResponse;
 import io.arknights.dateorfriends.modules.user.auth.mapper.ActionLogMapper;
 import io.arknights.dateorfriends.modules.user.auth.mapper.UserDO;
 import io.arknights.dateorfriends.modules.user.auth.mapper.UserMapper;
@@ -61,6 +62,39 @@ public class AuthServiceImpl implements AuthService {
                             }
                             return handleLoginSuccess(user, ip).then(issueTokens(user));
                         }));
+    }
+
+    @Override
+    public Mono<RegisterResponse> register(String account, String email, String password, String nickname, String ip) {
+        var finalNickname = nickname == null || nickname.isBlank() ? account : nickname;
+        return Mono.fromCallable(() -> userMapper.countByAccountAll(account))
+                .subscribeOn(Schedulers.boundedElastic())
+                .flatMap(count -> {
+                    if (count > 0) {
+                        return Mono.error(new BusinessException(ErrorCode.ACCOUNT_ALREADY_EXISTS));
+                    }
+                    return Mono.empty();
+                })
+                .then(Mono.fromCallable(() -> userMapper.countByEmailAll(email))
+                        .subscribeOn(Schedulers.boundedElastic())
+                        .flatMap(count -> {
+                            if (count > 0) {
+                                return Mono.error(new BusinessException(ErrorCode.EMAIL_ALREADY_EXISTS));
+                            }
+                            return Mono.empty();
+                        }))
+                .then(Mono.fromCallable(() -> {
+                    var passwordHash = passwordEncoder.encode(password);
+                    var user = new UserDO();
+                    user.setAccount(account);
+                    user.setEmail(email);
+                    user.setPasswordHash(passwordHash);
+                    user.setNickname(finalNickname);
+                    userMapper.insertUser(user);
+                    return user;
+                }).subscribeOn(Schedulers.boundedElastic()))
+                .flatMap(user -> insertActionLog(user.getId(), ip, "/auth/register")
+                        .thenReturn(new RegisterResponse(user.getId(), user.getAccount(), user.getEmail(), user.getNickname())));
     }
 
     @Override

@@ -3,6 +3,7 @@ package io.arknights.dateorfriends.modules.user.auth.mapper;
 import java.time.LocalDateTime;
 import org.apache.ibatis.annotations.Insert;
 import org.apache.ibatis.annotations.Mapper;
+import org.apache.ibatis.annotations.Options;
 import org.apache.ibatis.annotations.Param;
 import org.apache.ibatis.annotations.Select;
 import org.apache.ibatis.annotations.Update;
@@ -69,6 +70,39 @@ public interface UserMapper {
               AND deleted = 0
             """)
     long countAdmin();
+
+    @Select("""
+            SELECT COUNT(1)
+            FROM `user`
+            WHERE account = #{account}
+            LIMIT 1
+            """)
+    long countByAccountAll(@Param("account") String account);
+
+    @Select("""
+            SELECT COUNT(1)
+            FROM `user`
+            WHERE email = #{email}
+            LIMIT 1
+            """)
+    long countByEmailAll(@Param("email") String email);
+
+    @Insert("""
+            INSERT INTO `user` (
+              account,
+              email,
+              password_hash,
+              nickname
+            )
+            VALUES (
+              #{account},
+              #{email},
+              #{passwordHash},
+              #{nickname}
+            )
+            """)
+    @Options(useGeneratedKeys = true, keyProperty = "id")
+    int insertUser(UserDO user);
 
     @Insert("""
             INSERT INTO `user` (

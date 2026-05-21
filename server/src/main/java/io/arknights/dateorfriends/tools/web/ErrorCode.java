@@ -10,6 +10,8 @@ public enum ErrorCode {
     ACCOUNT_LOCKED(2002, "账号已锁定"),
     ACCOUNT_SUSPENDED(2003, "账号已暂停使用"),
     ACCOUNT_BANNED(2004, "账号已封禁"),
+    ACCOUNT_ALREADY_EXISTS(2005, "账号已存在"),
+    EMAIL_ALREADY_EXISTS(2006, "邮箱已存在"),
 
     TOKEN_EXPIRED(3000, "令牌已过期"),
     TOKEN_REVOKED(3001, "令牌已失效"),
@@ -33,4 +35,3 @@ public enum ErrorCode {
         return defaultMessage;
     }
 }
-

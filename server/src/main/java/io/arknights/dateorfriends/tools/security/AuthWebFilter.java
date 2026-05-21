@@ -68,6 +68,7 @@ public class AuthWebFilter implements WebFilter {
 
     private boolean isPublicPath(String path) {
         return "/auth/login".equals(path)
+                || "/auth/register".equals(path)
                 || "/auth/refresh".equals(path)
                 || path.startsWith("/actuator");
     }

@@ -54,6 +54,37 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ApiResponseError'
+  /auth/register:
+    post:
+      tags: [Auth]
+      summary: 注册
+      description: 用户注册（公共接口，无需登录），创建普通用户账号（role=USER，密码以 BCrypt 哈希存储）
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegisterRequest'
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseRegisterResponse'
+        '400':
+          description: 参数不合法 / 账号或邮箱已存在
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseError'
+        '500':
+          description: 服务端错误
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseError'
   /auth/refresh:
     post:
       tags: [Auth]
@@ -270,6 +301,47 @@ components:
           nullable: true
           description: 可选；同时吊销该 Refresh Token（JWT）
           example: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+    RegisterRequest:
+      type: object
+      required: [account, email, password]
+      properties:
+        account:
+          type: string
+          description: 登录账号（user.account）
+          example: user001
+        email:
+          type: string
+          format: email
+          description: 登录邮箱（user.email）
+          example: user001@example.com
+        password:
+          type: string
+          description: 登录密码（明文；后端 BCrypt 哈希存储）
+          example: 123456
+        nickname:
+          type: string
+          nullable: true
+          description: 昵称（为空则默认使用 account）
+          example: 小明
+    RegisterResponse:
+      type: object
+      required: [userId, account, email, nickname]
+      properties:
+        userId:
+          type: integer
+          format: int64
+          description: 用户 ID（user.id）
+          example: 2
+        account:
+          type: string
+          example: user001
+        email:
+          type: string
+          format: email
+          example: user001@example.com
+        nickname:
+          type: string
+          example: 小明
     TokenResponse:
       type: object
       required:
@@ -344,6 +416,20 @@ components:
           example: ok
         data:
           nullable: true
+    ApiResponseRegisterResponse:
+      type: object
+      required: [code, message, data]
+      properties:
+        code:
+          type: integer
+          format: int32
+          description: 0=成功；非0=失败
+          example: 0
+        message:
+          type: string
+          example: ok
+        data:
+          $ref: '#/components/schemas/RegisterResponse'
     ApiResponseError:
       type: object
       required: [code, message, data]
