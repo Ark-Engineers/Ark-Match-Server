@@ -17,7 +17,6 @@ public interface BanRecordMapper {
               target_type,
               target_value,
               banned_user_id,
-              report_id,
               admin_id,
               reason,
               duration_seconds,
@@ -29,7 +28,6 @@ public interface BanRecordMapper {
               #{targetType},
               #{targetValue},
               #{bannedUserId},
-              #{reportId},
               #{adminId},
               #{reason},
               #{durationSeconds},
@@ -64,7 +62,6 @@ public interface BanRecordMapper {
               target_type AS targetType,
               target_value AS targetValue,
               banned_user_id AS bannedUserId,
-              report_id AS reportId,
               admin_id AS adminId,
               reason,
               duration_seconds AS durationSeconds,
@@ -89,7 +86,6 @@ public interface BanRecordMapper {
               target_type AS targetType,
               target_value AS targetValue,
               banned_user_id AS bannedUserId,
-              report_id AS reportId,
               admin_id AS adminId,
               reason,
               duration_seconds AS durationSeconds,
@@ -111,9 +107,6 @@ public interface BanRecordMapper {
               </if>
               <if test="bannedUserId != null">
                 AND banned_user_id = #{bannedUserId}
-              </if>
-              <if test="reportId != null">
-                AND report_id = #{reportId}
               </if>
               <if test="keyword != null and keyword != ''">
                 AND MATCH(target_value, reason) AGAINST(#{keyword} IN BOOLEAN MODE)
@@ -138,7 +131,6 @@ public interface BanRecordMapper {
             @Param("targetType") String targetType,
             @Param("targetValue") String targetValue,
             @Param("bannedUserId") Long bannedUserId,
-            @Param("reportId") Long reportId,
             @Param("keyword") String keyword,
             @Param("status") String status,
             @Param("adminId") Long adminId,
@@ -162,9 +154,6 @@ public interface BanRecordMapper {
               <if test="bannedUserId != null">
                 AND banned_user_id = #{bannedUserId}
               </if>
-              <if test="reportId != null">
-                AND report_id = #{reportId}
-              </if>
               <if test="keyword != null and keyword != ''">
                 AND MATCH(target_value, reason) AGAINST(#{keyword} IN BOOLEAN MODE)
               </if>
@@ -186,7 +175,6 @@ public interface BanRecordMapper {
             @Param("targetType") String targetType,
             @Param("targetValue") String targetValue,
             @Param("bannedUserId") Long bannedUserId,
-            @Param("reportId") Long reportId,
             @Param("keyword") String keyword,
             @Param("status") String status,
             @Param("adminId") Long adminId,
@@ -200,7 +188,6 @@ public interface BanRecordMapper {
               target_type AS targetType,
               target_value AS targetValue,
               banned_user_id AS bannedUserId,
-              report_id AS reportId,
               admin_id AS adminId,
               reason,
               duration_seconds AS durationSeconds,
@@ -227,7 +214,6 @@ public interface BanRecordMapper {
               target_type AS targetType,
               target_value AS targetValue,
               banned_user_id AS bannedUserId,
-              report_id AS reportId,
               admin_id AS adminId,
               reason,
               duration_seconds AS durationSeconds,
@@ -254,7 +240,6 @@ public interface BanRecordMapper {
               target_type AS targetType,
               target_value AS targetValue,
               banned_user_id AS bannedUserId,
-              report_id AS reportId,
               admin_id AS adminId,
               reason,
               duration_seconds AS durationSeconds,
@@ -295,13 +280,26 @@ public interface BanRecordMapper {
     long countForUser(@Param("userId") long userId, @Param("status") String status);
 
     @Select("""
+            SELECT COUNT(1)
+            FROM `ban_record`
+            WHERE banned_user_id = #{userId}
+              AND target_type = #{targetType}
+              AND status = 'ACTIVE'
+              AND (expires_at IS NULL OR expires_at > #{now})
+            """)
+    long countActiveByUserIdAndType(
+            @Param("userId") long userId,
+            @Param("targetType") String targetType,
+            @Param("now") LocalDateTime now
+    );
+
+    @Select("""
             <script>
             SELECT
               id,
               target_type AS targetType,
               target_value AS targetValue,
               banned_user_id AS bannedUserId,
-              report_id AS reportId,
               admin_id AS adminId,
               reason,
               duration_seconds AS durationSeconds,

@@ -40,7 +40,6 @@ public class UserAdminController {
 
     public record BanUserOpRequest(
             @Min(1) long userId,
-            @Min(1) long reportId,
             String reason,
             Long durationSeconds,
             boolean confirm
@@ -87,7 +86,7 @@ public class UserAdminController {
         var ip = io.arknights.dateorfriends.tools.web.IpUtils.resolveClientIp(exchange);
 
         return banService.assertBanPermission(principal)
-                .then(banService.banUserAssociatedIps(principal.userId(), request.userId(), request.reportId(), request.reason(), request.durationSeconds()))
+                .then(banService.banUserAssociatedIps(principal.userId(), request.userId(), request.reason(), request.durationSeconds()))
                 .flatMap(records -> banService.writeAdminActionLog(principal.userId(), ip, "/admin/user/ban/ip-only").thenReturn(records))
                 .map(ApiResponse::ok);
     }
@@ -102,7 +101,7 @@ public class UserAdminController {
         var ip = io.arknights.dateorfriends.tools.web.IpUtils.resolveClientIp(exchange);
 
         return banService.assertBanPermission(principal)
-                .then(banService.banUserEmailOnly(principal.userId(), request.userId(), request.reportId(), request.reason(), request.durationSeconds()))
+                .then(banService.banUserEmailOnly(principal.userId(), request.userId(), request.reason(), request.durationSeconds()))
                 .flatMap(records -> banService.writeAdminActionLog(principal.userId(), ip, "/admin/user/ban/email-only").thenReturn(records))
                 .map(ApiResponse::ok);
     }
@@ -117,7 +116,7 @@ public class UserAdminController {
         var ip = io.arknights.dateorfriends.tools.web.IpUtils.resolveClientIp(exchange);
 
         return banService.assertBanPermission(principal)
-                .then(banService.banUserFull(principal.userId(), request.userId(), request.reportId(), request.reason(), request.durationSeconds(), request.confirm()))
+                .then(banService.banUserFull(principal.userId(), request.userId(), request.reason(), request.durationSeconds(), request.confirm()))
                 .flatMap(records -> banService.writeAdminActionLog(principal.userId(), ip, "/admin/user/ban/full").thenReturn(records))
                 .map(ApiResponse::ok);
     }

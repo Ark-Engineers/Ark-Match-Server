@@ -25,22 +25,36 @@ public class AdminBootstrap implements ApplicationRunner {
 
     @Override
     public void run(ApplicationArguments args) {
-        var count = userMapper.countAdmin();
-        if (count > 0) {
-            return;
+        if (userMapper.countSuperAdmin() <= 0) {
+            var superAccount = properties.getSuperAccount();
+            var superPassword = properties.getSuperPassword();
+            if (superAccount == null || superAccount.isBlank() || superPassword == null || superPassword.isBlank()) {
+                throw new IllegalStateException("super admin 初始化失败：请配置 app.admin.bootstrap.super-account 与 app.admin.bootstrap.super-password（或旧配置 account/password）");
+            }
+            var superEmail = properties.getSuperEmail();
+            if (superEmail == null || superEmail.isBlank()) {
+                superEmail = superAccount;
+            }
+            var superNickname = properties.getSuperNickname() == null || properties.getSuperNickname().isBlank() ? "超级管理员" : properties.getSuperNickname();
+            var superPasswordHash = passwordEncoder.encode(superPassword);
+            userMapper.upsertSuperAdmin(superAccount, superEmail, superPasswordHash, superNickname);
+            log.info("super admin 初始化完成");
         }
-        var account = properties.getAccount();
-        var password = properties.getPassword();
-        if (account == null || account.isBlank() || password == null || password.isBlank()) {
-            throw new IllegalStateException("admin 初始化失败：请配置 app.admin.bootstrap.account 与 app.admin.bootstrap.password");
+
+        if (userMapper.countAdmin() <= 0) {
+            var adminAccount = properties.getAdminAccount();
+            var adminPassword = properties.getAdminPassword();
+            if (adminAccount == null || adminAccount.isBlank() || adminPassword == null || adminPassword.isBlank()) {
+                throw new IllegalStateException("admin 初始化失败：请配置 app.admin.bootstrap.admin-account 与 app.admin.bootstrap.admin-password");
+            }
+            var adminEmail = properties.getAdminEmail();
+            if (adminEmail == null || adminEmail.isBlank()) {
+                adminEmail = adminAccount;
+            }
+            var adminNickname = properties.getAdminNickname() == null || properties.getAdminNickname().isBlank() ? "管理员" : properties.getAdminNickname();
+            var adminPasswordHash = passwordEncoder.encode(adminPassword);
+            userMapper.upsertAdmin(adminAccount, adminEmail, adminPasswordHash, adminNickname);
+            log.info("admin 初始化完成");
         }
-        var email = properties.getEmail();
-        if (email == null || email.isBlank()) {
-            email = account;
-        }
-        var nickname = properties.getNickname() == null || properties.getNickname().isBlank() ? "管理员" : properties.getNickname();
-        var passwordHash = passwordEncoder.encode(password);
-        userMapper.upsertAdmin(account, email, passwordHash, nickname);
-        log.info("admin 初始化完成");
     }
 }

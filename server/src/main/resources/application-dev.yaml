@@ -47,7 +47,12 @@ app:
       sync-active-bans-fixed-delay-ms: 300000
   admin:
     bootstrap:
-      account: admin
-      password: admin
-      email: admin@admin.com
-      nickname: 管理员
+      super-account: superadmin
+      super-password: 123456
+      super-email: superadmin@example.com
+      super-nickname: 超级管理员
+
+      admin-account: admin
+      admin-password: 123456
+      admin-email: admin@example.com
+      admin-nickname: 管理员

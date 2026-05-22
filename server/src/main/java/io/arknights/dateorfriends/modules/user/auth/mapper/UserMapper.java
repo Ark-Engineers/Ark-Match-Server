@@ -254,6 +254,70 @@ public interface UserMapper {
             """)
     java.util.List<UserDO> selectListByNicknameLike(@Param("nickname") String nickname, @Param("limit") int limit);
 
+    @Select("""
+            <script>
+            SELECT
+              id,
+              account,
+              email,
+              password_hash AS passwordHash,
+              role,
+              nickname,
+              avatar_url AS avatarUrl,
+              status,
+              email_verified_at AS emailVerifiedAt,
+              last_login_at AS lastLoginAt,
+              last_login_ip AS lastLoginIp,
+              login_fail_count AS loginFailCount,
+              locked_until AS lockedUntil,
+              created_at AS createdAt,
+              updated_at AS updatedAt,
+              deleted,
+              deleted_at AS deletedAt
+            FROM `user`
+            WHERE deleted = 0
+              <if test="role != null and role != ''">
+                AND role = #{role}
+              </if>
+              <if test="keyword != null and keyword != ''">
+                AND (
+                  account LIKE CONCAT('%', #{keyword}, '%')
+                  OR email LIKE CONCAT('%', #{keyword}, '%')
+                  OR nickname LIKE CONCAT('%', #{keyword}, '%')
+                  OR CAST(id AS CHAR) LIKE CONCAT('%', #{keyword}, '%')
+                )
+              </if>
+            ORDER BY id DESC
+            LIMIT #{limit} OFFSET #{offset}
+            </script>
+            """)
+    java.util.List<UserDO> selectListByRoleAndKeyword(
+            @Param("role") String role,
+            @Param("keyword") String keyword,
+            @Param("limit") int limit,
+            @Param("offset") int offset
+    );
+
+    @Select("""
+            <script>
+            SELECT COUNT(1)
+            FROM `user`
+            WHERE deleted = 0
+              <if test="role != null and role != ''">
+                AND role = #{role}
+              </if>
+              <if test="keyword != null and keyword != ''">
+                AND (
+                  account LIKE CONCAT('%', #{keyword}, '%')
+                  OR email LIKE CONCAT('%', #{keyword}, '%')
+                  OR nickname LIKE CONCAT('%', #{keyword}, '%')
+                  OR CAST(id AS CHAR) LIKE CONCAT('%', #{keyword}, '%')
+                )
+              </if>
+            </script>
+            """)
+    long countByRoleAndKeyword(@Param("role") String role, @Param("keyword") String keyword);
+
     @Update("""
             UPDATE `user`
             SET status = #{status}
@@ -268,6 +332,14 @@ public interface UserMapper {
               AND deleted = 0
             """)
     long countAdmin();
+
+    @Select("""
+            SELECT COUNT(1)
+            FROM `user`
+            WHERE role = 'SUPER_ADMIN'
+              AND deleted = 0
+            """)
+    long countSuperAdmin();
 
     @Select("""
             SELECT COUNT(1)
@@ -348,6 +420,60 @@ public interface UserMapper {
             @Param("passwordHash") String passwordHash,
             @Param("nickname") String nickname
     );
+
+    @Insert("""
+            INSERT INTO `user` (
+              account,
+              email,
+              password_hash,
+              role,
+              nickname,
+              status,
+              email_verified_at,
+              login_fail_count,
+              locked_until,
+              deleted,
+              deleted_at
+            )
+            VALUES (
+              #{account},
+              #{email},
+              #{passwordHash},
+              'SUPER_ADMIN',
+              #{nickname},
+              'NORMAL',
+              NOW(),
+              0,
+              NULL,
+              0,
+              NULL
+            )
+            ON DUPLICATE KEY UPDATE
+              role = 'SUPER_ADMIN',
+              account = VALUES(account),
+              email = VALUES(email),
+              password_hash = VALUES(password_hash),
+              nickname = VALUES(nickname),
+              status = 'NORMAL',
+              email_verified_at = COALESCE(email_verified_at, VALUES(email_verified_at)),
+              login_fail_count = 0,
+              locked_until = NULL,
+              deleted = 0,
+              deleted_at = NULL
+            """)
+    int upsertSuperAdmin(
+            @Param("account") String account,
+            @Param("email") String email,
+            @Param("passwordHash") String passwordHash,
+            @Param("nickname") String nickname
+    );
+
+    @Update("""
+            UPDATE `user`
+            SET role = #{role}
+            WHERE id = #{id}
+            """)
+    int updateRole(@Param("id") long id, @Param("role") String role);
 
     @Update("""
             UPDATE `user`

@@ -27,7 +27,6 @@ public class UserBanController {
             long id,
             String targetType,
             String targetValue,
-            long reportId,
             String reason,
             Long durationSeconds,
             java.time.LocalDateTime effectiveAt,
@@ -62,7 +61,6 @@ public class UserBanController {
                                     r.getId(),
                                     r.getTargetType(),
                                     r.getTargetValue(),
-                                    r.getReportId(),
                                     r.getReason(),
                                     r.getDurationSeconds(),
                                     r.getEffectiveAt(),
@@ -79,4 +77,3 @@ public class UserBanController {
                 .map(ApiResponse::ok);
     }
 }
-

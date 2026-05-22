@@ -3,7 +3,7 @@
 
 -- 用户数据库（MySQL 8.0）
 -- 目的：提供一套最小可用的“用户/管理员”账户表结构
--- 说明：role 字段用于识别管理员与普通用户（USER / ADMIN）
+-- 说明：role 字段用于识别超级管理员/管理员与普通用户（USER / ADMIN / SUPER_ADMIN）
 -- 约定（后续所有表/字段都遵循）：
 -- 1) 每张表、每个字段都必须写 COMMENT 备注（便于协作与维护）。
 -- 2) 建议每张表都包含 created_at / updated_at（以及需要时的 deleted/deleted_at）。
@@ -27,7 +27,7 @@ CREATE TABLE `user` (
   `account` VARCHAR(64) NOT NULL COMMENT '登录账号（唯一；用于登录）',
   `email` VARCHAR(255) NOT NULL COMMENT '登录邮箱（唯一；建议用于找回密码/通知）',
   `password_hash` VARCHAR(255) NOT NULL COMMENT '密码哈希（BCrypt/Argon2 输出；禁止明文/可逆加密）',
-  `role` ENUM('USER','ADMIN') NOT NULL DEFAULT 'USER' COMMENT '角色：USER=普通用户；ADMIN=管理员（用于鉴权）',
+  `role` ENUM('USER','ADMIN','SUPER_ADMIN') NOT NULL DEFAULT 'USER' COMMENT '角色：USER=普通用户；ADMIN=管理员；SUPER_ADMIN=超级管理员（用于鉴权与授权）',
  
   -- 展示信息
   `nickname` VARCHAR(64) NOT NULL COMMENT '昵称（展示用）',

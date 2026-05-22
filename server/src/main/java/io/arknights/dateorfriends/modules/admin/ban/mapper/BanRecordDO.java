@@ -9,7 +9,6 @@ public class BanRecordDO {
     private String targetType;
     private String targetValue;
     private Long bannedUserId;
-    private Long reportId;
     private Long adminId;
     private String reason;
     private Long durationSeconds;

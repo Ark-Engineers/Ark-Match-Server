@@ -35,7 +35,8 @@
 - `DB_URL` / `DB_USERNAME` / `DB_PASSWORD`
 - `REDIS_HOST` / `REDIS_PORT` / `REDIS_PASSWORD` / `REDIS_DATABASE`
 - `JWT_SECRET` / `JWT_ISSUER`
-- `ADMIN_ACCOUNT` / `ADMIN_PASSWORD` / `ADMIN_EMAIL` / `ADMIN_NICKNAME`
+- 超级管理员（首次启动自动导入）：`APP_ADMIN_BOOTSTRAP_SUPER_ACCOUNT` / `APP_ADMIN_BOOTSTRAP_SUPER_PASSWORD`（可选 `APP_ADMIN_BOOTSTRAP_SUPER_EMAIL` / `APP_ADMIN_BOOTSTRAP_SUPER_NICKNAME`）
+- 管理员（首次启动自动导入）：`APP_ADMIN_BOOTSTRAP_ADMIN_ACCOUNT` / `APP_ADMIN_BOOTSTRAP_ADMIN_PASSWORD`（可选 `APP_ADMIN_BOOTSTRAP_ADMIN_EMAIL` / `APP_ADMIN_BOOTSTRAP_ADMIN_NICKNAME`）
 
 构建：
 
@@ -183,12 +184,32 @@ java -jar server/target/server-0.0.1-SNAPSHOT.jar --server.port=0
 
 ## 8. 默认管理员初始化
 
-- 服务启动时自动检测系统是否存在管理员账号
-- 若不存在，则按配置导入管理员（必须输入账号与密码；BCrypt 加密存储）：
-  - 环境变量：`ADMIN_ACCOUNT` / `ADMIN_PASSWORD`（可选 `ADMIN_EMAIL` / `ADMIN_NICKNAME`）
-  - 或启动参数：`--app.admin.bootstrap.account=... --app.admin.bootstrap.password=...`
+- 服务启动时自动检测系统是否存在 `SUPER_ADMIN` 与 `ADMIN`
+- 若不存在，则按配置自动导入（账号/密码必填；BCrypt 加密存储；已存在则跳过）
+- 推荐配置项（启动参数同名，前缀 `--` 即可）：
+  - `app.admin.bootstrap.super-account` / `app.admin.bootstrap.super-password`（可选 `super-email` / `super-nickname`）
+  - `app.admin.bootstrap.admin-account` / `app.admin.bootstrap.admin-password`（可选 `admin-email` / `admin-nickname`）
+- 备注：为兼容旧配置，`app.admin.bootstrap.account/password/email/nickname` 会作为超级管理员配置的兜底值
+
+示例：
+
+```yaml
+app:
+  admin:
+    bootstrap:
+      super-account: superadmin
+      super-password: "强密码1"
+      super-email: superadmin@example.com
+      super-nickname: 超级管理员
+
+      admin-account: admin
+      admin-password: "强密码2"
+      admin-email: admin@example.com
+      admin-nickname: 管理员
+```
 - 初始化逻辑实现：
   - [AdminBootstrap.java](file:///c:/Users/MrLee/Desktop/%E7%BD%97%E5%BE%B7%E4%B9%8B%E9%97%A8/%E7%A8%8B%E5%BA%8F/dateOrFriends/server/src/main/java/io/arknights/dateorfriends/tools/startup/AdminBootstrap.java)
+
 
 ## 9. 逻辑删除（Soft Delete）
 
@@ -261,7 +282,77 @@ app:
   - [ping.sql](file:///c:/Users/MrLee/Desktop/%E7%BD%97%E5%BE%B7%E4%B9%8B%E9%97%A8/%E7%A8%8B%E5%BA%8F/dateOrFriends/server/src/main/resources/sql/modules/admin/ping.sql)
   - [users.sql](file:///c:/Users/MrLee/Desktop/%E7%BD%97%E5%BE%B7%E4%B9%8B%E9%97%A8/%E7%A8%8B%E5%BA%8F/dateOrFriends/server/src/main/resources/sql/modules/user/users.sql)
 
-## 11. 测试说明
+## 11. 数据字典（数据库备注同步）
+
+本节用于把“数据库字段 COMMENT”同步到文档，便于前后端/测试/运维对齐口径。若字段变更，必须同时更新对应 SQL 与本节。
+
+### 11.1 user（用户表，含管理员）
+
+- SQL：`server/src/main/resources/sql/modules/user/users.sql`
+- 关键枚举：
+  - `role`：`USER` / `ADMIN` / `SUPER_ADMIN`
+  - `status`：`NORMAL` / `SUSPENDED` / `BANNED`
+
+### 11.2 ban_record（封禁记录表）
+
+- SQL：[ban.sql](file:///c:/Users/MrLee/Desktop/%E7%BD%97%E5%BE%B7%E4%B9%8B%E9%97%A8/%E7%A8%8B%E5%BA%8F/dateOrFriends/server/src/main/resources/sql/modules/admin/ban.sql)
+
+| 字段 | 类型 | 备注 |
+|---|---|---|
+| id | BIGINT | 主键，自增 |
+| target_type | ENUM(IP,EMAIL,USER) | 封禁目标类型 |
+| target_value | VARCHAR(255) | 封禁目标值（IP/邮箱/用户ID） |
+| banned_user_id | BIGINT NULL | 被封禁用户ID（user.id；IP/EMAIL 可能为空） |
+| report_id | BIGINT NULL | 关联举报单ID（预留；当前不启用） |
+| admin_id | BIGINT | 操作管理员ID（user.id） |
+| reason | VARCHAR(255) NULL | 封禁原因 |
+| duration_seconds | BIGINT NULL | 封禁时长（秒；NULL=永久） |
+| effective_at | DATETIME | 封禁生效时间 |
+| expires_at | DATETIME NULL | 封禁到期时间（NULL=永久） |
+| status | ENUM(ACTIVE,EXPIRED,REVOKED) | 状态：生效中/到期解封/提前解封 |
+| unbanned_at | DATETIME NULL | 解封时间（手动/自动） |
+| unbanned_by | BIGINT NULL | 手动解封管理员ID（自动解封为 NULL） |
+| unban_type | ENUM(AUTO,MANUAL) NULL | 解封类型：AUTO 自动；MANUAL 手动 |
+| created_at | DATETIME | 创建时间 |
+| updated_at | DATETIME | 更新时间 |
+
+常用索引（详见 SQL）：
+- `idx_ban_record_target(target_type,target_value)`：按目标查询
+- `idx_ban_record_banned_user_id(banned_user_id)`：按被封用户查询
+- `idx_ban_record_status(status)`：按状态查询
+- `ft_ban_record_keyword(target_value,reason)`：关键词全文索引
+
+### 11.3 ban_operation_log（封禁操作日志，只读追加）
+
+- SQL：[ban.sql](file:///c:/Users/MrLee/Desktop/%E7%BD%97%E5%BE%B7%E4%B9%8B%E9%97%A8/%E7%A8%8B%E5%BA%8F/dateOrFriends/server/src/main/resources/sql/modules/admin/ban.sql)
+
+| 字段 | 类型 | 备注 |
+|---|---|---|
+| id | BIGINT | 主键，自增 |
+| record_id | BIGINT | 封禁记录ID（ban_record.id） |
+| actor_id | BIGINT NULL | 操作人ID（管理员 user.id；系统自动为 NULL） |
+| actor_role | VARCHAR(32) NULL | 操作人角色（ADMIN 等；系统自动为 NULL） |
+| action_type | ENUM(BAN,UNBAN_MANUAL,UNBAN_AUTO) | 操作类型 |
+| from_status | ENUM(ACTIVE,EXPIRED,REVOKED) NULL | 变更前状态（BAN 时为 NULL） |
+| to_status | ENUM(ACTIVE,EXPIRED,REVOKED) | 变更后状态 |
+| created_at | DATETIME | 操作时间 |
+
+### 11.4 admin_role_operation_log（管理员角色变更日志，只读追加）
+
+- SQL：[permission.sql](file:///c:/Users/MrLee/Desktop/%E7%BD%97%E5%BE%B7%E4%B9%8B%E9%97%A8/%E7%A8%8B%E5%BA%8F/dateOrFriends/server/src/main/resources/sql/modules/admin/permission.sql)
+
+| 字段 | 类型 | 备注 |
+|---|---|---|
+| id | BIGINT | 主键，自增 |
+| actor_id | BIGINT NULL | 操作人ID（user.id；系统自动为 NULL） |
+| actor_role | VARCHAR(32) | 操作人角色（当前仅 SUPER_ADMIN） |
+| target_user_id | BIGINT | 被授权/撤销的目标用户ID（user.id） |
+| action_type | VARCHAR(32) | 操作类型：GRANT_ADMIN / REVOKE_ADMIN |
+| from_role | VARCHAR(32) | 变更前角色（USER/ADMIN/SUPER_ADMIN） |
+| to_role | VARCHAR(32) | 变更后角色（USER/ADMIN/SUPER_ADMIN） |
+| created_at | DATETIME | 操作时间 |
+
+## 12. 测试说明
 
 - 按当前约定：项目不提交测试代码与测试依赖
 - 如后续需要补齐自动化测试，再新增 `server/src/test` 目录并恢复测试依赖

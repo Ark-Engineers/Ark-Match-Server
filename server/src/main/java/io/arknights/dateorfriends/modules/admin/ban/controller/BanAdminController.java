@@ -45,7 +45,6 @@ public class BanAdminController {
 
     public record BanSingleRequest(
             @NotBlank String value,
-            @Min(1) long reportId,
             String reason,
             Long durationSeconds
     ) {
@@ -53,7 +52,6 @@ public class BanAdminController {
 
     public record BanBatchRequest(
             List<String> values,
-            @Min(1) long reportId,
             String reason,
             Long durationSeconds,
             boolean confirm
@@ -62,7 +60,6 @@ public class BanAdminController {
 
     public record BanUserRequest(
             @Min(1) long userId,
-            @Min(1) long reportId,
             String reason,
             Long durationSeconds
     ) {
@@ -70,7 +67,6 @@ public class BanAdminController {
 
     public record BanUserBatchRequest(
             List<Long> userIds,
-            @Min(1) long reportId,
             String reason,
             Long durationSeconds,
             boolean confirm
@@ -117,7 +113,7 @@ public class BanAdminController {
         var principal = exchange.<io.arknights.dateorfriends.tools.jwt.JwtPrincipal>getAttribute(AuthWebFilter.ATTR_PRINCIPAL);
         if (principal == null) return Mono.error(new BusinessException(ErrorCode.UNAUTHORIZED));
         return banService.assertBanPermission(principal)
-                .then(banService.banIp(principal.userId(), request.value(), request.reportId(), request.reason(), request.durationSeconds()))
+                .then(banService.banIp(principal.userId(), request.value(), request.reason(), request.durationSeconds()))
                 .map(ApiResponse::ok);
     }
 
@@ -127,7 +123,7 @@ public class BanAdminController {
         if (principal == null) return Mono.error(new BusinessException(ErrorCode.UNAUTHORIZED));
         var values = request.values() == null ? List.<String>of() : request.values();
         return banService.assertBanPermission(principal)
-                .then(banService.banIpBatch(principal.userId(), values, request.reportId(), request.reason(), request.durationSeconds(), request.confirm()))
+                .then(banService.banIpBatch(principal.userId(), values, request.reason(), request.durationSeconds(), request.confirm()))
                 .map(ApiResponse::ok);
     }
 
@@ -136,7 +132,7 @@ public class BanAdminController {
         var principal = exchange.<io.arknights.dateorfriends.tools.jwt.JwtPrincipal>getAttribute(AuthWebFilter.ATTR_PRINCIPAL);
         if (principal == null) return Mono.error(new BusinessException(ErrorCode.UNAUTHORIZED));
         return banService.assertBanPermission(principal)
-                .then(banService.banEmail(principal.userId(), request.value(), request.reportId(), request.reason(), request.durationSeconds()))
+                .then(banService.banEmail(principal.userId(), request.value(), request.reason(), request.durationSeconds()))
                 .map(ApiResponse::ok);
     }
 
@@ -146,7 +142,7 @@ public class BanAdminController {
         if (principal == null) return Mono.error(new BusinessException(ErrorCode.UNAUTHORIZED));
         var values = request.values() == null ? List.<String>of() : request.values();
         return banService.assertBanPermission(principal)
-                .then(banService.banEmailBatch(principal.userId(), values, request.reportId(), request.reason(), request.durationSeconds(), request.confirm()))
+                .then(banService.banEmailBatch(principal.userId(), values, request.reason(), request.durationSeconds(), request.confirm()))
                 .map(ApiResponse::ok);
     }
 
@@ -155,7 +151,7 @@ public class BanAdminController {
         var principal = exchange.<io.arknights.dateorfriends.tools.jwt.JwtPrincipal>getAttribute(AuthWebFilter.ATTR_PRINCIPAL);
         if (principal == null) return Mono.error(new BusinessException(ErrorCode.UNAUTHORIZED));
         return banService.assertBanPermission(principal)
-                .then(banService.banUser(principal.userId(), request.userId(), request.reportId(), request.reason(), request.durationSeconds()))
+                .then(banService.banUser(principal.userId(), request.userId(), request.reason(), request.durationSeconds()))
                 .map(ApiResponse::ok);
     }
 
@@ -164,7 +160,7 @@ public class BanAdminController {
         var principal = exchange.<io.arknights.dateorfriends.tools.jwt.JwtPrincipal>getAttribute(AuthWebFilter.ATTR_PRINCIPAL);
         if (principal == null) return Mono.error(new BusinessException(ErrorCode.UNAUTHORIZED));
         return banService.assertBanPermission(principal)
-                .then(banService.banUserBatch(principal.userId(), request.userIds(), request.reportId(), request.reason(), request.durationSeconds(), request.confirm()))
+                .then(banService.banUserBatch(principal.userId(), request.userIds(), request.reason(), request.durationSeconds(), request.confirm()))
                 .map(ApiResponse::ok);
     }
 
@@ -202,7 +198,6 @@ public class BanAdminController {
             @RequestParam(value = "targetType", required = false) String targetType,
             @RequestParam(value = "targetValue", required = false) String targetValue,
             @RequestParam(value = "bannedUserId", required = false) Long bannedUserId,
-            @RequestParam(value = "reportId", required = false) Long reportId,
             @RequestParam(value = "keyword", required = false) String keyword,
             @RequestParam(value = "status", required = false) String status,
             @RequestParam(value = "adminId", required = false) Long adminId,
@@ -222,8 +217,8 @@ public class BanAdminController {
         LocalDateTime to = parseDateTime(effectiveTo);
 
         return banService.assertBanPermission(principal).then(Mono.fromCallable(() -> {
-                    var total = banRecordMapper.count(targetType, targetValue, bannedUserId, reportId, keyword, status, adminId, from, to);
-                    var items = banRecordMapper.selectList(targetType, targetValue, bannedUserId, reportId, keyword, status, adminId, from, to, safeSize, offset);
+                    var total = banRecordMapper.count(targetType, targetValue, bannedUserId, keyword, status, adminId, from, to);
+                    var items = banRecordMapper.selectList(targetType, targetValue, bannedUserId, keyword, status, adminId, from, to, safeSize, offset);
                     return new PageResponse<>(total, safePage, safeSize, items);
                 })
                 .subscribeOn(Schedulers.boundedElastic())
@@ -245,7 +240,6 @@ public class BanAdminController {
             @RequestParam(value = "targetType", required = false) String targetType,
             @RequestParam(value = "targetValue", required = false) String targetValue,
             @RequestParam(value = "bannedUserId", required = false) Long bannedUserId,
-            @RequestParam(value = "reportId", required = false) Long reportId,
             @RequestParam(value = "keyword", required = false) String keyword,
             @RequestParam(value = "status", required = false) String status,
             @RequestParam(value = "adminId", required = false) Long adminId,
@@ -264,7 +258,7 @@ public class BanAdminController {
                     if (idList != null && !idList.isEmpty()) {
                         return banRecordMapper.selectListByIds(idList);
                     }
-                    return banRecordMapper.selectList(targetType, targetValue, bannedUserId, reportId, keyword, status, adminId, from, to, 5000, 0);
+                    return banRecordMapper.selectList(targetType, targetValue, bannedUserId, keyword, status, adminId, from, to, 5000, 0);
                 }))
                 .subscribeOn(Schedulers.boundedElastic())
                 .map(this::toCsv)
@@ -301,13 +295,12 @@ public class BanAdminController {
 
     private String toCsv(List<BanRecordDO> list) {
         var sb = new StringBuilder();
-        sb.append("id,targetType,targetValue,bannedUserId,reportId,adminId,reason,durationSeconds,effectiveAt,expiresAt,status,unbannedAt,unbannedBy,unbanType,createdAt,updatedAt\n");
+        sb.append("id,targetType,targetValue,bannedUserId,adminId,reason,durationSeconds,effectiveAt,expiresAt,status,unbannedAt,unbannedBy,unbanType,createdAt,updatedAt\n");
         for (var r : list) {
             sb.append(safe(r.getId()))
                     .append(',').append(safe(r.getTargetType()))
                     .append(',').append(safe(r.getTargetValue()))
                     .append(',').append(safe(r.getBannedUserId()))
-                    .append(',').append(safe(r.getReportId()))
                     .append(',').append(safe(r.getAdminId()))
                     .append(',').append(csvValue(r.getReason()))
                     .append(',').append(safe(r.getDurationSeconds()))

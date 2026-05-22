@@ -600,13 +600,6 @@ paths:
           schema:
             type: integer
             format: int64
-        - name: reportId
-          in: query
-          required: false
-          description: 关联举报单ID
-          schema:
-            type: integer
-            format: int64
         - name: keyword
           in: query
           required: false
@@ -690,12 +683,6 @@ paths:
           schema:
             type: string
         - name: bannedUserId
-          in: query
-          required: false
-          schema:
-            type: integer
-            format: int64
-        - name: reportId
           in: query
           required: false
           schema:
@@ -1080,6 +1067,204 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ApiResponseError'
+  /admin/permission/users:
+    get:
+      tags: [Admin]
+      summary: 超级管理员-用户列表
+      description: 仅 SUPER_ADMIN 可访问；支持按角色与关键词筛选；分页返回
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: keyword
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: role
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [USER, ADMIN, SUPER_ADMIN]
+            default: USER
+        - name: page
+          in: query
+          required: false
+          schema:
+            type: integer
+            format: int32
+            default: 1
+        - name: size
+          in: query
+          required: false
+          schema:
+            type: integer
+            format: int32
+            default: 20
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponsePageAdminPermissionUser'
+        '401':
+          description: 未登录或令牌无效
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseError'
+        '403':
+          description: 无权限（仅超级管理员）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseError'
+  /admin/permission/grant-admin:
+    post:
+      tags: [Admin]
+      summary: 超级管理员-授权为管理员
+      description: 仅 SUPER_ADMIN 可访问；将 USER 提升为 ADMIN；自动强制下线
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GrantAdminRequest'
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseVoid'
+        '401':
+          description: 未登录或令牌无效
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseError'
+        '403':
+          description: 无权限（仅超级管理员）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseError'
+        '400':
+          description: 参数不合法/重复授权/禁止修改自身
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseError'
+  /admin/permission/revoke-admin:
+    post:
+      tags: [Admin]
+      summary: 超级管理员-撤销管理员权限
+      description: 仅 SUPER_ADMIN 可访问；将 ADMIN 降级为 USER；禁止对 SUPER_ADMIN 操作；自动强制下线
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RevokeAdminRequest'
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseVoid'
+        '401':
+          description: 未登录或令牌无效
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseError'
+        '403':
+          description: 无权限（仅超级管理员）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseError'
+        '400':
+          description: 参数不合法/禁止修改自身/禁止撤销超级管理员
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseError'
+  /admin/permission/logs:
+    get:
+      tags: [Admin]
+      summary: 超级管理员-授权操作日志
+      description: 仅 SUPER_ADMIN 可访问；分页返回
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: targetUserId
+          in: query
+          required: false
+          schema:
+            type: integer
+            format: int64
+        - name: actorId
+          in: query
+          required: false
+          schema:
+            type: integer
+            format: int64
+        - name: actionType
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [GRANT_ADMIN, REVOKE_ADMIN]
+        - name: fromTime
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: toTime
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: page
+          in: query
+          required: false
+          schema:
+            type: integer
+            format: int32
+            default: 1
+        - name: size
+          in: query
+          required: false
+          schema:
+            type: integer
+            format: int32
+            default: 20
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponsePageAdminRoleOperationLog'
+        '401':
+          description: 未登录或令牌无效
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseError'
+        '403':
+          description: 无权限（仅超级管理员）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseError'
 components:
   securitySchemes:
     bearerAuth:
@@ -1195,13 +1380,14 @@ components:
           example: 1
         role:
           type: string
-          description: 角色（USER / ADMIN）
-          example: ADMIN
+          description: 角色（USER / ADMIN / SUPER_ADMIN）
+          enum: [USER, ADMIN, SUPER_ADMIN]
+          example: SUPER_ADMIN
         weight:
           type: integer
           format: int32
           description: 权限权重（数值越大权限越高）
-          example: 100
+          example: 1000
     ApiResponseTokenResponse:
       type: object
       required: [code, message, data]
@@ -1261,15 +1447,11 @@ components:
           nullable: true
     BanSingleRequest:
       type: object
-      required: [value, reportId]
+      required: [value]
       properties:
         value:
           type: string
           description: 封禁目标值（IP 或 邮箱）
-        reportId:
-          type: integer
-          format: int64
-          description: 关联举报单ID
         reason:
           type: string
           nullable: true
@@ -1282,17 +1464,13 @@ components:
           example: 86400
     BanBatchRequest:
       type: object
-      required: [values, reportId, confirm]
+      required: [values, confirm]
       properties:
         values:
           type: array
           items:
             type: string
           description: 批量封禁目标列表（IP 或 邮箱）
-        reportId:
-          type: integer
-          format: int64
-          description: 关联举报单ID
         reason:
           type: string
           nullable: true
@@ -1307,17 +1485,13 @@ components:
           example: true
     BanUserRequest:
       type: object
-      required: [userId, reportId]
+      required: [userId]
       properties:
         userId:
           type: integer
           format: int64
           description: 用户ID（user.id）
           example: 1
-        reportId:
-          type: integer
-          format: int64
-          description: 关联举报单ID
         reason:
           type: string
           nullable: true
@@ -1330,7 +1504,7 @@ components:
           example: 86400
     BanUserBatchRequest:
       type: object
-      required: [userIds, reportId, confirm]
+      required: [userIds, confirm]
       properties:
         userIds:
           type: array
@@ -1338,10 +1512,6 @@ components:
             type: integer
             format: int64
           description: 批量封禁用户ID列表（user.id）
-        reportId:
-          type: integer
-          format: int64
-          description: 关联举报单ID
         reason:
           type: string
           nullable: true
@@ -1365,7 +1535,7 @@ components:
           example: 1
     BanRecord:
       type: object
-      required: [id, targetType, targetValue, reportId, adminId, effectiveAt, status, createdAt, updatedAt]
+      required: [id, targetType, targetValue, adminId, effectiveAt, status, createdAt, updatedAt]
       properties:
         id:
           type: integer
@@ -1379,9 +1549,6 @@ components:
           type: integer
           format: int64
           nullable: true
-        reportId:
-          type: integer
-          format: int64
         adminId:
           type: integer
           format: int64
@@ -1538,9 +1705,141 @@ components:
           example: ok
         data:
           $ref: '#/components/schemas/PageBanOperationLog'
+    AdminPermissionUser:
+      type: object
+      required: [userId, account, email, role, status, createdAt]
+      properties:
+        userId:
+          type: integer
+          format: int64
+        account:
+          type: string
+        nickname:
+          type: string
+          nullable: true
+        email:
+          type: string
+        role:
+          type: string
+          enum: [USER, ADMIN, SUPER_ADMIN]
+        status:
+          type: string
+          enum: [NORMAL, SUSPENDED, BANNED]
+        createdAt:
+          type: string
+          format: date-time
+    PageAdminPermissionUser:
+      type: object
+      required: [total, page, size, items]
+      properties:
+        total:
+          type: integer
+          format: int64
+        page:
+          type: integer
+          format: int32
+        size:
+          type: integer
+          format: int32
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/AdminPermissionUser'
+    ApiResponsePageAdminPermissionUser:
+      type: object
+      required: [code, message, data]
+      properties:
+        code:
+          type: integer
+          format: int32
+          example: 0
+        message:
+          type: string
+          example: ok
+        data:
+          $ref: '#/components/schemas/PageAdminPermissionUser'
+    GrantAdminRequest:
+      type: object
+      required: [userId, confirm]
+      properties:
+        userId:
+          type: integer
+          format: int64
+        confirm:
+          type: boolean
+          default: true
+    RevokeAdminRequest:
+      type: object
+      required: [userId, confirm]
+      properties:
+        userId:
+          type: integer
+          format: int64
+        confirm:
+          type: boolean
+          default: true
+    AdminRoleOperationLog:
+      type: object
+      required: [id, actorRole, targetUserId, actionType, fromRole, toRole, createdAt]
+      properties:
+        id:
+          type: integer
+          format: int64
+        actorId:
+          type: integer
+          format: int64
+          nullable: true
+        actorRole:
+          type: string
+          enum: [SUPER_ADMIN]
+        targetUserId:
+          type: integer
+          format: int64
+        actionType:
+          type: string
+          enum: [GRANT_ADMIN, REVOKE_ADMIN]
+        fromRole:
+          type: string
+          enum: [USER, ADMIN, SUPER_ADMIN]
+        toRole:
+          type: string
+          enum: [USER, ADMIN, SUPER_ADMIN]
+        createdAt:
+          type: string
+          format: date-time
+    PageAdminRoleOperationLog:
+      type: object
+      required: [total, page, size, items]
+      properties:
+        total:
+          type: integer
+          format: int64
+        page:
+          type: integer
+          format: int32
+        size:
+          type: integer
+          format: int32
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/AdminRoleOperationLog'
+    ApiResponsePageAdminRoleOperationLog:
+      type: object
+      required: [code, message, data]
+      properties:
+        code:
+          type: integer
+          format: int32
+          example: 0
+        message:
+          type: string
+          example: ok
+        data:
+          $ref: '#/components/schemas/PageAdminRoleOperationLog'
     UserBanRecord:
       type: object
-      required: [id, targetType, targetValue, reportId, effectiveAt, status, createdAt]
+      required: [id, targetType, targetValue, effectiveAt, status, createdAt]
       properties:
         id:
           type: integer
@@ -1550,9 +1849,6 @@ components:
           enum: [IP, EMAIL, USER]
         targetValue:
           type: string
-        reportId:
-          type: integer
-          format: int64
         reason:
           type: string
           nullable: true
@@ -1651,16 +1947,12 @@ components:
             type: string
     BanUserOpRequest:
       type: object
-      required: [userId, reportId]
+      required: [userId]
       properties:
         userId:
           type: integer
           format: int64
           description: 用户ID（user.id）
-        reportId:
-          type: integer
-          format: int64
-          description: 关联举报单ID
         reason:
           type: string
           nullable: true

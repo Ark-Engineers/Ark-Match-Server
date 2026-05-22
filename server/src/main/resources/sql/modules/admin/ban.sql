@@ -13,7 +13,7 @@ CREATE TABLE `ban_record` (
   `target_type` ENUM('IP','EMAIL','USER') NOT NULL COMMENT '封禁目标类型：IP/EMAIL/USER',
   `target_value` VARCHAR(255) NOT NULL COMMENT '封禁目标值（IP/邮箱/用户ID）',
   `banned_user_id` BIGINT NULL COMMENT '被封禁的用户ID（user.id；IP/EMAIL 可能为空）',
-  `report_id` BIGINT NOT NULL COMMENT '关联举报单ID',
+  `report_id` BIGINT NULL COMMENT '关联举报单ID（预留；可为空）',
 
   `admin_id` BIGINT NOT NULL COMMENT '操作管理员ID（user.id）',
   `reason` VARCHAR(255) NULL COMMENT '封禁原因',
@@ -33,7 +33,6 @@ CREATE TABLE `ban_record` (
   PRIMARY KEY (`id`),
   KEY `idx_ban_record_target` (`target_type`, `target_value`) COMMENT '按目标查询',
   KEY `idx_ban_record_banned_user_id` (`banned_user_id`) COMMENT '按被封用户查询',
-  KEY `idx_ban_record_report_id` (`report_id`) COMMENT '按举报单查询',
   KEY `idx_ban_record_status` (`status`) COMMENT '按状态查询',
   KEY `idx_ban_record_effective_at` (`effective_at`) COMMENT '按生效时间查询',
   KEY `idx_ban_record_expires_at` (`expires_at`) COMMENT '按到期时间查询',

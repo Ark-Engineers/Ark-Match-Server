@@ -74,12 +74,11 @@ public class BanService {
                 .flatMap(banned -> banned ? Mono.error(new BusinessException(ErrorCode.ACCOUNT_BANNED)) : Mono.empty());
     }
 
-    public Mono<BanRecordDO> banIp(long adminId, String ip, long reportId, String reason, Long durationSeconds) {
-        return banIpInternal(adminId, ip, reportId, reason, durationSeconds, null);
+    public Mono<BanRecordDO> banIp(long adminId, String ip, String reason, Long durationSeconds) {
+        return banIpInternal(adminId, ip, reason, durationSeconds, null);
     }
 
-    private Mono<BanRecordDO> banIpInternal(long adminId, String ip, long reportId, String reason, Long durationSeconds, Long bannedUserId) {
-        if (reportId <= 0) return Mono.error(new BusinessException(ErrorCode.PARAM_INVALID));
+    private Mono<BanRecordDO> banIpInternal(long adminId, String ip, String reason, Long durationSeconds, Long bannedUserId) {
         if (isWhitelistedIp(ip)) {
             return Mono.error(new BusinessException(ErrorCode.BAN_TARGET_WHITELISTED));
         }
@@ -90,7 +89,6 @@ public class BanService {
         record.setTargetType("IP");
         record.setTargetValue(normalized);
         record.setBannedUserId(bannedUserId);
-        record.setReportId(reportId);
         record.setAdminId(adminId);
         record.setReason(reason);
         record.setDurationSeconds(durationSeconds);
@@ -114,18 +112,17 @@ public class BanService {
                 });
     }
 
-    public Mono<List<BanRecordDO>> banIpBatch(long adminId, List<String> ips, long reportId, String reason, Long durationSeconds, boolean confirm) {
+    public Mono<List<BanRecordDO>> banIpBatch(long adminId, List<String> ips, String reason, Long durationSeconds, boolean confirm) {
         if (!confirm) {
             return Mono.error(new BusinessException(ErrorCode.BATCH_CONFIRM_REQUIRED));
         }
         return Flux.fromIterable(ips)
                 .filter(ip -> ip != null && !ip.isBlank())
-                .concatMap(ip -> banIp(adminId, ip.trim(), reportId, reason, durationSeconds))
+                .concatMap(ip -> banIp(adminId, ip.trim(), reason, durationSeconds))
                 .collectList();
     }
 
-    public Mono<BanRecordDO> banEmail(long adminId, String email, long reportId, String reason, Long durationSeconds) {
-        if (reportId <= 0) return Mono.error(new BusinessException(ErrorCode.PARAM_INVALID));
+    public Mono<BanRecordDO> banEmail(long adminId, String email, String reason, Long durationSeconds) {
         var normalized = email == null ? null : email.trim().toLowerCase();
         if (isWhitelistedEmail(normalized)) {
             return Mono.error(new BusinessException(ErrorCode.BAN_TARGET_WHITELISTED));
@@ -135,7 +132,6 @@ public class BanService {
         var record = new BanRecordDO();
         record.setTargetType("EMAIL");
         record.setTargetValue(normalized);
-        record.setReportId(reportId);
         record.setAdminId(adminId);
         record.setReason(reason);
         record.setDurationSeconds(durationSeconds);
@@ -173,9 +169,8 @@ public class BanService {
                 });
     }
 
-    public Mono<BanRecordDO> banUser(long adminId, long userId, long reportId, String reason, Long durationSeconds) {
+    public Mono<BanRecordDO> banUser(long adminId, long userId, String reason, Long durationSeconds) {
         if (userId <= 0) return Mono.error(new BusinessException(ErrorCode.PARAM_INVALID));
-        if (reportId <= 0) return Mono.error(new BusinessException(ErrorCode.PARAM_INVALID));
         var now = LocalDateTime.now();
         var expiresAt = durationSeconds == null ? null : now.plusSeconds(durationSeconds);
 
@@ -192,7 +187,6 @@ public class BanService {
                     record.setTargetType("USER");
                     record.setTargetValue(String.valueOf(userId));
                     record.setBannedUserId(userId);
-                    record.setReportId(reportId);
                     record.setAdminId(adminId);
                     record.setReason(reason);
                     record.setDurationSeconds(durationSeconds);
@@ -297,7 +291,7 @@ public class BanService {
                 .subscribeOn(Schedulers.boundedElastic());
     }
 
-    public Mono<List<BanRecordDO>> banUserAssociatedIps(long adminId, long userId, long reportId, String reason, Long durationSeconds) {
+    public Mono<List<BanRecordDO>> banUserAssociatedIps(long adminId, long userId, String reason, Long durationSeconds) {
         return Mono.fromCallable(() -> {
                     var user = userMapper.selectById(userId);
                     if (user == null) throw new BusinessException(ErrorCode.USER_NOT_FOUND);
@@ -311,23 +305,23 @@ public class BanService {
                 })
                 .subscribeOn(Schedulers.boundedElastic())
                 .flatMapMany(Flux::fromIterable)
-                .concatMap(ip -> banIpInternal(adminId, ip, reportId, reason, durationSeconds, userId).onErrorResume(BusinessException.class, e -> {
+                .concatMap(ip -> banIpInternal(adminId, ip, reason, durationSeconds, userId).onErrorResume(BusinessException.class, e -> {
                     if (e.getErrorCode() == ErrorCode.ALREADY_BANNED) return Mono.empty();
                     return Mono.error(e);
                 }))
                 .collectList();
     }
 
-    public Mono<List<BanRecordDO>> banUserEmailOnly(long adminId, long userId, long reportId, String reason, Long durationSeconds) {
+    public Mono<List<BanRecordDO>> banUserEmailOnly(long adminId, long userId, String reason, Long durationSeconds) {
         return Mono.fromCallable(() -> userMapper.selectById(userId))
                 .subscribeOn(Schedulers.boundedElastic())
                 .flatMap(user -> {
                     if (user == null) return Mono.error(new BusinessException(ErrorCode.USER_NOT_FOUND));
-                    return banEmail(adminId, user.getEmail(), reportId, reason, durationSeconds).map(List::of);
+                    return banEmail(adminId, user.getEmail(), reason, durationSeconds).map(List::of);
                 });
     }
 
-    public Mono<List<BanRecordDO>> banUserFull(long adminId, long userId, long reportId, String reason, Long durationSeconds, boolean confirm) {
+    public Mono<List<BanRecordDO>> banUserFull(long adminId, long userId, String reason, Long durationSeconds, boolean confirm) {
         if (!confirm) return Mono.error(new BusinessException(ErrorCode.BATCH_CONFIRM_REQUIRED));
         return Mono.fromCallable(() -> {
                     var user = userMapper.selectById(userId);
@@ -354,20 +348,20 @@ public class BanService {
                                     });
 
                     return relatedUserIds.flatMapMany(ids -> Flux.fromIterable(ids))
-                            .concatMap(id -> banUser(adminId, id, reportId, reason, durationSeconds).onErrorResume(BusinessException.class, e -> {
+                            .concatMap(id -> banUser(adminId, id, reason, durationSeconds).onErrorResume(BusinessException.class, e -> {
                                 if (e.getErrorCode() == ErrorCode.ALREADY_BANNED) return Mono.empty();
                                 if (e.getErrorCode() == ErrorCode.BAN_TARGET_WHITELISTED) return Mono.empty();
                                 return Mono.error(e);
                             }))
                             .collectList()
-                            .flatMap(records -> banUserAssociatedIps(adminId, userId, reportId, reason, durationSeconds)
+                            .flatMap(records -> banUserAssociatedIps(adminId, userId, reason, durationSeconds)
                                     .map(ipRecords -> {
                                         var all = new ArrayList<BanRecordDO>();
                                         all.addAll(records);
                                         all.addAll(ipRecords);
                                         return all;
                                     }))
-                            .flatMap(records -> banUserEmailOnly(adminId, userId, reportId, reason, durationSeconds)
+                            .flatMap(records -> banUserEmailOnly(adminId, userId, reason, durationSeconds)
                                     .map(emailRecords -> {
                                         var all = new ArrayList<BanRecordDO>();
                                         all.addAll(records);
@@ -419,23 +413,23 @@ public class BanService {
         );
     }
 
-    public Mono<List<BanRecordDO>> banUserBatch(long adminId, List<Long> userIds, long reportId, String reason, Long durationSeconds, boolean confirm) {
+    public Mono<List<BanRecordDO>> banUserBatch(long adminId, List<Long> userIds, String reason, Long durationSeconds, boolean confirm) {
         if (!confirm) {
             return Mono.error(new BusinessException(ErrorCode.BATCH_CONFIRM_REQUIRED));
         }
         return Flux.fromIterable(userIds == null ? List.<Long>of() : userIds)
                 .filter(id -> id != null && id > 0)
-                .concatMap(id -> banUser(adminId, id, reportId, reason, durationSeconds))
+                .concatMap(id -> banUser(adminId, id, reason, durationSeconds))
                 .collectList();
     }
 
-    public Mono<List<BanRecordDO>> banEmailBatch(long adminId, List<String> emails, long reportId, String reason, Long durationSeconds, boolean confirm) {
+    public Mono<List<BanRecordDO>> banEmailBatch(long adminId, List<String> emails, String reason, Long durationSeconds, boolean confirm) {
         if (!confirm) {
             return Mono.error(new BusinessException(ErrorCode.BATCH_CONFIRM_REQUIRED));
         }
         return Flux.fromIterable(emails)
                 .filter(e -> e != null && !e.isBlank())
-                .concatMap(e -> banEmail(adminId, e, reportId, reason, durationSeconds))
+                .concatMap(e -> banEmail(adminId, e, reason, durationSeconds))
                 .collectList();
     }
 
@@ -454,6 +448,7 @@ public class BanService {
                             })
                             .subscribeOn(Schedulers.boundedElastic())
                             .then(unbanTarget(record))
+                            .then(refreshUserStatusIfNeeded(record))
                             .thenReturn(record);
                 });
     }
@@ -469,7 +464,8 @@ public class BanService {
                             insertOperationLog(record.getId(), null, null, "UNBAN_AUTO", "ACTIVE", "EXPIRED");
                             return record;
                         }).subscribeOn(Schedulers.boundedElastic())
-                        .then(unbanTarget(record)))
+                        .then(unbanTarget(record))
+                        .then(refreshUserStatusIfNeeded(record)))
                 .then();
     }
 
@@ -534,6 +530,29 @@ public class BanService {
             }
         }
         return Mono.empty();
+    }
+
+    private Mono<Void> refreshUserStatusIfNeeded(BanRecordDO record) {
+        if (record == null || record.getBannedUserId() == null || record.getBannedUserId() <= 0) return Mono.empty();
+        var userId = record.getBannedUserId();
+        return Mono.fromRunnable(() -> {
+                    var now = LocalDateTime.now();
+                    var activeUserBans = banRecordMapper.countActiveByUserIdAndType(userId, "USER", now);
+                    if (activeUserBans > 0) {
+                        userMapper.updateStatus(userId, "BANNED");
+                        return;
+                    }
+
+                    var activeEmailBans = banRecordMapper.countActiveByUserIdAndType(userId, "EMAIL", now);
+                    if (activeEmailBans > 0) {
+                        userMapper.updateStatus(userId, "SUSPENDED");
+                        return;
+                    }
+
+                    userMapper.updateStatus(userId, "NORMAL");
+                })
+                .subscribeOn(Schedulers.boundedElastic())
+                .then();
     }
 
     private Mono<Void> invalidateUserTokensByEmail(String email) {

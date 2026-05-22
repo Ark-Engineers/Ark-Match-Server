@@ -243,6 +243,9 @@ public class AuthServiceImpl implements AuthService {
     }
 
     private int roleWeight(String role) {
+        if (Role.SUPER_ADMIN.name().equals(role)) {
+            return 1000;
+        }
         if (Role.ADMIN.name().equals(role)) {
             return 100;
         }

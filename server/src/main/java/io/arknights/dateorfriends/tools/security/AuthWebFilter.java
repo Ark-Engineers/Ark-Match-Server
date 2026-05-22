@@ -86,7 +86,8 @@ public class AuthWebFilter implements WebFilter {
 
     private boolean checkPermission(String path, JwtPrincipal principal) {
         if (path.startsWith("/admin")) {
-            return Role.ADMIN.name().equals(principal.role());
+            var role = principal.role();
+            return Role.ADMIN.name().equals(role) || Role.SUPER_ADMIN.name().equals(role);
         }
         return true;
     }
