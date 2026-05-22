@@ -197,6 +197,47 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ApiResponseError'
+  /user/ban/records:
+    get:
+      tags: [User]
+      summary: 查询我的封禁记录
+      description: 仅返回当前登录用户（bannedUserId=token.userId）的封禁记录；禁止跨用户查询
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: status
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [ACTIVE, EXPIRED, REVOKED]
+        - name: page
+          in: query
+          required: false
+          schema:
+            type: integer
+            format: int32
+            default: 1
+        - name: size
+          in: query
+          required: false
+          schema:
+            type: integer
+            format: int32
+            default: 20
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponsePageUserBanRecord'
+        '401':
+          description: 未登录或令牌无效
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseError'
   /admin/ping:
     get:
       tags: [Admin]
@@ -262,6 +303,779 @@ paths:
                 $ref: '#/components/schemas/ApiResponseError'
         '500':
           description: 服务端错误
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseError'
+  /admin/ban/ip:
+    post:
+      tags: [Admin]
+      summary: 封禁IP（单个）
+      description: 对指定 IP 进行封禁；被封禁 IP 无法登录/注册/访问任何接口
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BanSingleRequest'
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseBanRecord'
+        '401':
+          description: 未登录或令牌无效
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseError'
+        '403':
+          description: 无权限（非 ADMIN / 白名单禁止封禁）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseError'
+        '400':
+          description: 参数不合法
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseError'
+  /admin/ban/ip/batch:
+    post:
+      tags: [Admin]
+      summary: 封禁IP（批量）
+      description: 批量封禁 IP；必须 confirm=true（二次确认）
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BanBatchRequest'
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseBanRecordList'
+        '401':
+          description: 未登录或令牌无效
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseError'
+        '403':
+          description: 无权限（非 ADMIN / 白名单禁止封禁）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseError'
+        '400':
+          description: 参数不合法 / confirm=false
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseError'
+  /admin/ban/email:
+    post:
+      tags: [Admin]
+      summary: 封禁邮箱（单个）
+      description: 对指定邮箱进行封禁；封禁后该邮箱无法登录/注册；如已存在账号将强制下线
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BanSingleRequest'
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseBanRecord'
+        '401':
+          description: 未登录或令牌无效
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseError'
+        '403':
+          description: 无权限（非 ADMIN / 白名单禁止封禁）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseError'
+        '400':
+          description: 参数不合法
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseError'
+  /admin/ban/email/batch:
+    post:
+      tags: [Admin]
+      summary: 封禁邮箱（批量）
+      description: 批量封禁邮箱；必须 confirm=true（二次确认）
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BanBatchRequest'
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseBanRecordList'
+        '401':
+          description: 未登录或令牌无效
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseError'
+        '403':
+          description: 无权限（非 ADMIN / 白名单禁止封禁）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseError'
+        '400':
+          description: 参数不合法 / confirm=false
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseError'
+  /admin/ban/user:
+    post:
+      tags: [Admin]
+      summary: 封禁用户（按 userId）
+      description: 对指定 userId 的账号进行封禁；封禁后该账号无法访问任何受保护资源（并强制下线），登录/刷新也会被拦截
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BanUserRequest'
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseBanRecord'
+        '401':
+          description: 未登录或令牌无效
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseError'
+        '403':
+          description: 无权限（非 ADMIN / 白名单禁止封禁）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseError'
+        '400':
+          description: 参数不合法 / 用户不存在
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseError'
+  /admin/ban/user/batch:
+    post:
+      tags: [Admin]
+      summary: 封禁用户（批量）
+      description: 批量封禁 userId；必须 confirm=true（二次确认）
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BanUserBatchRequest'
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseBanRecordList'
+        '401':
+          description: 未登录或令牌无效
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseError'
+        '403':
+          description: 无权限（非 ADMIN / 白名单禁止封禁）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseError'
+        '400':
+          description: 参数不合法 / confirm=false
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseError'
+  /admin/ban/unban:
+    post:
+      tags: [Admin]
+      summary: 解封（手动）
+      description: 根据封禁记录ID手动解封；记录状态更新为 REVOKED
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UnbanRequest'
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseBanRecord'
+        '401':
+          description: 未登录或令牌无效
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseError'
+        '403':
+          description: 无权限（非 ADMIN）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseError'
+        '400':
+          description: 参数不合法
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseError'
+  /admin/ban/records:
+    get:
+      tags: [Admin]
+      summary: 封禁记录查询
+      description: 支持按 IP/邮箱/状态/管理员ID/时间范围筛选；targetValue 为模糊匹配；分页返回
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: targetType
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [IP, EMAIL, USER]
+        - name: targetValue
+          in: query
+          required: false
+          description: 目标值（模糊匹配）
+          schema:
+            type: string
+        - name: bannedUserId
+          in: query
+          required: false
+          description: 被封禁的用户ID（用于封禁记录追溯；IP/EMAIL 可能为空）
+          schema:
+            type: integer
+            format: int64
+        - name: reportId
+          in: query
+          required: false
+          description: 关联举报单ID
+          schema:
+            type: integer
+            format: int64
+        - name: keyword
+          in: query
+          required: false
+          description: 关键词全文搜索（目标/原因）
+          schema:
+            type: string
+        - name: status
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [ACTIVE, EXPIRED, REVOKED]
+        - name: adminId
+          in: query
+          required: false
+          schema:
+            type: integer
+            format: int64
+        - name: effectiveFrom
+          in: query
+          required: false
+          description: 生效时间起（ISO_LOCAL_DATE_TIME，例如 2026-05-22T10:00:00）
+          schema:
+            type: string
+        - name: effectiveTo
+          in: query
+          required: false
+          description: 生效时间止（ISO_LOCAL_DATE_TIME）
+          schema:
+            type: string
+        - name: page
+          in: query
+          required: false
+          schema:
+            type: integer
+            format: int32
+            default: 1
+        - name: size
+          in: query
+          required: false
+          schema:
+            type: integer
+            format: int32
+            default: 20
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponsePageBanRecord'
+        '401':
+          description: 未登录或令牌无效
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseError'
+        '403':
+          description: 无权限（非 ADMIN）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseError'
+  /admin/ban/records/export:
+    get:
+      tags: [Admin]
+      summary: 导出封禁记录CSV
+      description: 返回 CSV 文件（UTF-8）；参数同 records 查询
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: targetType
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [IP, EMAIL, USER]
+        - name: targetValue
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: bannedUserId
+          in: query
+          required: false
+          schema:
+            type: integer
+            format: int64
+        - name: reportId
+          in: query
+          required: false
+          schema:
+            type: integer
+            format: int64
+        - name: keyword
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: ids
+          in: query
+          required: false
+          description: 选中记录ID列表（逗号分隔；传此参数时忽略其他筛选条件）
+          schema:
+            type: string
+        - name: status
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [ACTIVE, EXPIRED, REVOKED]
+        - name: adminId
+          in: query
+          required: false
+          schema:
+            type: integer
+            format: int64
+        - name: effectiveFrom
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: effectiveTo
+          in: query
+          required: false
+          schema:
+            type: string
+      responses:
+        '200':
+          description: 成功（CSV）
+          content:
+            text/csv:
+              schema:
+                type: string
+        '401':
+          description: 未登录或令牌无效
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseError'
+        '403':
+          description: 无权限（非 ADMIN）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseError'
+  /admin/ban/records/{id}:
+    get:
+      tags: [Admin]
+      summary: 封禁记录详情
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseBanRecord'
+        '401':
+          description: 未登录或令牌无效
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseError'
+        '403':
+          description: 无权限（非 ADMIN）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseError'
+        '400':
+          description: 参数不合法
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseError'
+  /admin/ban/logs:
+    get:
+      tags: [Admin]
+      summary: 封禁操作日志查询
+      description: 只读追加日志；支持按 recordId/actorId/actionType/时间范围筛选；分页返回
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: recordId
+          in: query
+          required: false
+          schema:
+            type: integer
+            format: int64
+        - name: actorId
+          in: query
+          required: false
+          schema:
+            type: integer
+            format: int64
+        - name: actionType
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [BAN, UNBAN_MANUAL, UNBAN_AUTO]
+        - name: fromTime
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: toTime
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: page
+          in: query
+          required: false
+          schema:
+            type: integer
+            format: int32
+            default: 1
+        - name: size
+          in: query
+          required: false
+          schema:
+            type: integer
+            format: int32
+            default: 20
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponsePageBanOperationLog'
+        '401':
+          description: 未登录或令牌无效
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseError'
+        '403':
+          description: 无权限（非 ADMIN）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseError'
+  /admin/ban/check/ip:
+    get:
+      tags: [Admin]
+      summary: 查询IP是否封禁
+      description: 返回 true=已封禁；false=未封禁
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: value
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseBoolean'
+  /admin/ban/check/email:
+    get:
+      tags: [Admin]
+      summary: 查询邮箱是否封禁
+      description: 返回 true=已封禁；false=未封禁
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: value
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseBoolean'
+  /admin/user/search:
+    get:
+      tags: [Admin]
+      summary: 用户信息查询
+      description: 支持通过 userId / 用户名(account) / 邮箱(email) / IP（最近登录IP）等维度检索用户，并返回关联IP列表
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: userId
+          in: query
+          required: false
+          schema:
+            type: integer
+            format: int64
+        - name: account
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: nickname
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: email
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: ip
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            format: int32
+            default: 20
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseUserSearchList'
+        '401':
+          description: 未登录或令牌无效
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseError'
+        '403':
+          description: 无权限（非 ADMIN 或无封禁权限）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseError'
+        '400':
+          description: 参数不合法（至少提供一个查询条件）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseError'
+  /admin/user/ban/ip-only:
+    post:
+      tags: [Admin]
+      summary: 封禁用户关联IP
+      description: 仅封禁目标用户历史关联IP（不修改账号状态）；被封禁IP无法登录与访问受保护资源
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BanUserOpRequest'
+      responses:
+        '200':
+          description: 成功（返回封禁记录列表）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseBanRecordList'
+        '401':
+          description: 未登录或令牌无效
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseError'
+        '403':
+          description: 无权限（非 ADMIN 或无封禁权限）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseError'
+        '400':
+          description: 参数不合法 / 目标不存在
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseError'
+  /admin/user/ban/email-only:
+    post:
+      tags: [Admin]
+      summary: 封禁用户邮箱
+      description: 仅封禁目标用户绑定邮箱；邮箱无法登录/注册；并强制下线
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BanUserOpRequest'
+      responses:
+        '200':
+          description: 成功（返回封禁记录列表）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseBanRecordList'
+        '401':
+          description: 未登录或令牌无效
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseError'
+        '403':
+          description: 无权限（非 ADMIN 或无封禁权限）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseError'
+        '400':
+          description: 参数不合法 / 目标不存在
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseError'
+  /admin/user/ban/full:
+    post:
+      tags: [Admin]
+      summary: 用户全封禁
+      description: 同时封禁关联IP/绑定邮箱/关联账号；并强制下线；必须 confirm=true（二次确认）
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BanUserOpRequest'
+      responses:
+        '200':
+          description: 成功（返回封禁记录列表）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseBanRecordList'
+        '401':
+          description: 未登录或令牌无效
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseError'
+        '403':
+          description: 无权限（非 ADMIN 或无封禁权限）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseError'
+        '400':
+          description: 参数不合法 / confirm=false
           content:
             application/json:
               schema:
@@ -445,3 +1259,430 @@ components:
           example: 未登录或令牌无效
         data:
           nullable: true
+    BanSingleRequest:
+      type: object
+      required: [value, reportId]
+      properties:
+        value:
+          type: string
+          description: 封禁目标值（IP 或 邮箱）
+        reportId:
+          type: integer
+          format: int64
+          description: 关联举报单ID
+        reason:
+          type: string
+          nullable: true
+          description: 封禁原因
+        durationSeconds:
+          type: integer
+          format: int64
+          nullable: true
+          description: 封禁时长（秒；NULL 表示永久）
+          example: 86400
+    BanBatchRequest:
+      type: object
+      required: [values, reportId, confirm]
+      properties:
+        values:
+          type: array
+          items:
+            type: string
+          description: 批量封禁目标列表（IP 或 邮箱）
+        reportId:
+          type: integer
+          format: int64
+          description: 关联举报单ID
+        reason:
+          type: string
+          nullable: true
+        durationSeconds:
+          type: integer
+          format: int64
+          nullable: true
+          description: 封禁时长（秒；NULL 表示永久）
+        confirm:
+          type: boolean
+          description: 二次确认开关（必须为 true）
+          example: true
+    BanUserRequest:
+      type: object
+      required: [userId, reportId]
+      properties:
+        userId:
+          type: integer
+          format: int64
+          description: 用户ID（user.id）
+          example: 1
+        reportId:
+          type: integer
+          format: int64
+          description: 关联举报单ID
+        reason:
+          type: string
+          nullable: true
+          description: 封禁原因
+        durationSeconds:
+          type: integer
+          format: int64
+          nullable: true
+          description: 封禁时长（秒；NULL 表示永久）
+          example: 86400
+    BanUserBatchRequest:
+      type: object
+      required: [userIds, reportId, confirm]
+      properties:
+        userIds:
+          type: array
+          items:
+            type: integer
+            format: int64
+          description: 批量封禁用户ID列表（user.id）
+        reportId:
+          type: integer
+          format: int64
+          description: 关联举报单ID
+        reason:
+          type: string
+          nullable: true
+        durationSeconds:
+          type: integer
+          format: int64
+          nullable: true
+          description: 封禁时长（秒；NULL 表示永久）
+        confirm:
+          type: boolean
+          description: 二次确认开关（必须为 true）
+          example: true
+    UnbanRequest:
+      type: object
+      required: [recordId]
+      properties:
+        recordId:
+          type: integer
+          format: int64
+          description: 封禁记录ID
+          example: 1
+    BanRecord:
+      type: object
+      required: [id, targetType, targetValue, reportId, adminId, effectiveAt, status, createdAt, updatedAt]
+      properties:
+        id:
+          type: integer
+          format: int64
+        targetType:
+          type: string
+          enum: [IP, EMAIL, USER]
+        targetValue:
+          type: string
+        bannedUserId:
+          type: integer
+          format: int64
+          nullable: true
+        reportId:
+          type: integer
+          format: int64
+        adminId:
+          type: integer
+          format: int64
+        reason:
+          type: string
+          nullable: true
+        durationSeconds:
+          type: integer
+          format: int64
+          nullable: true
+        effectiveAt:
+          type: string
+          format: date-time
+        expiresAt:
+          type: string
+          format: date-time
+          nullable: true
+        status:
+          type: string
+          enum: [ACTIVE, EXPIRED, REVOKED]
+        unbannedAt:
+          type: string
+          format: date-time
+          nullable: true
+        unbannedBy:
+          type: integer
+          format: int64
+          nullable: true
+        unbanType:
+          type: string
+          enum: [AUTO, MANUAL]
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+    PageBanRecord:
+      type: object
+      required: [total, page, size, items]
+      properties:
+        total:
+          type: integer
+          format: int64
+        page:
+          type: integer
+          format: int32
+        size:
+          type: integer
+          format: int32
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/BanRecord'
+    ApiResponseBanRecord:
+      type: object
+      required: [code, message, data]
+      properties:
+        code:
+          type: integer
+          format: int32
+          example: 0
+        message:
+          type: string
+          example: ok
+        data:
+          $ref: '#/components/schemas/BanRecord'
+    ApiResponseBanRecordList:
+      type: object
+      required: [code, message, data]
+      properties:
+        code:
+          type: integer
+          format: int32
+          example: 0
+        message:
+          type: string
+          example: ok
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/BanRecord'
+    ApiResponsePageBanRecord:
+      type: object
+      required: [code, message, data]
+      properties:
+        code:
+          type: integer
+          format: int32
+          example: 0
+        message:
+          type: string
+          example: ok
+        data:
+          $ref: '#/components/schemas/PageBanRecord'
+    BanOperationLog:
+      type: object
+      required: [id, recordId, actionType, toStatus, createdAt]
+      properties:
+        id:
+          type: integer
+          format: int64
+        recordId:
+          type: integer
+          format: int64
+        actorId:
+          type: integer
+          format: int64
+          nullable: true
+        actorRole:
+          type: string
+          nullable: true
+        actionType:
+          type: string
+          enum: [BAN, UNBAN_MANUAL, UNBAN_AUTO]
+        fromStatus:
+          type: string
+          enum: [ACTIVE, EXPIRED, REVOKED]
+          nullable: true
+        toStatus:
+          type: string
+          enum: [ACTIVE, EXPIRED, REVOKED]
+        createdAt:
+          type: string
+          format: date-time
+    PageBanOperationLog:
+      type: object
+      required: [total, page, size, items]
+      properties:
+        total:
+          type: integer
+          format: int64
+        page:
+          type: integer
+          format: int32
+        size:
+          type: integer
+          format: int32
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/BanOperationLog'
+    ApiResponsePageBanOperationLog:
+      type: object
+      required: [code, message, data]
+      properties:
+        code:
+          type: integer
+          format: int32
+          example: 0
+        message:
+          type: string
+          example: ok
+        data:
+          $ref: '#/components/schemas/PageBanOperationLog'
+    UserBanRecord:
+      type: object
+      required: [id, targetType, targetValue, reportId, effectiveAt, status, createdAt]
+      properties:
+        id:
+          type: integer
+          format: int64
+        targetType:
+          type: string
+          enum: [IP, EMAIL, USER]
+        targetValue:
+          type: string
+        reportId:
+          type: integer
+          format: int64
+        reason:
+          type: string
+          nullable: true
+        durationSeconds:
+          type: integer
+          format: int64
+          nullable: true
+        effectiveAt:
+          type: string
+          format: date-time
+        expiresAt:
+          type: string
+          format: date-time
+          nullable: true
+        status:
+          type: string
+          enum: [ACTIVE, EXPIRED, REVOKED]
+        unbannedAt:
+          type: string
+          format: date-time
+          nullable: true
+        unbanType:
+          type: string
+          enum: [AUTO, MANUAL]
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+    PageUserBanRecord:
+      type: object
+      required: [total, page, size, items]
+      properties:
+        total:
+          type: integer
+          format: int64
+        page:
+          type: integer
+          format: int32
+        size:
+          type: integer
+          format: int32
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/UserBanRecord'
+    ApiResponsePageUserBanRecord:
+      type: object
+      required: [code, message, data]
+      properties:
+        code:
+          type: integer
+          format: int32
+          example: 0
+        message:
+          type: string
+          example: ok
+        data:
+          $ref: '#/components/schemas/PageUserBanRecord'
+    ApiResponseBoolean:
+      type: object
+      required: [code, message, data]
+      properties:
+        code:
+          type: integer
+          format: int32
+          example: 0
+        message:
+          type: string
+          example: ok
+        data:
+          type: boolean
+    UserSearchItem:
+      type: object
+      required: [userId, account, nickname, email, role, status, relatedIps]
+      properties:
+        userId:
+          type: integer
+          format: int64
+        account:
+          type: string
+        nickname:
+          type: string
+          nullable: true
+        email:
+          type: string
+        role:
+          type: string
+        status:
+          type: string
+        lastLoginIp:
+          type: string
+          nullable: true
+        relatedIps:
+          type: array
+          items:
+            type: string
+    BanUserOpRequest:
+      type: object
+      required: [userId, reportId]
+      properties:
+        userId:
+          type: integer
+          format: int64
+          description: 用户ID（user.id）
+        reportId:
+          type: integer
+          format: int64
+          description: 关联举报单ID
+        reason:
+          type: string
+          nullable: true
+        durationSeconds:
+          type: integer
+          format: int64
+          nullable: true
+          description: 封禁时长（秒；NULL 表示永久）
+        confirm:
+          type: boolean
+          description: 二次确认开关（全封禁必须为 true）
+          default: false
+    ApiResponseUserSearchList:
+      type: object
+      required: [code, message, data]
+      properties:
+        code:
+          type: integer
+          format: int32
+        message:
+          type: string
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/UserSearchItem'

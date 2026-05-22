@@ -5,6 +5,7 @@ import io.arknights.dateorfriends.tools.security.AuthWebFilter;
 import io.arknights.dateorfriends.tools.web.ApiResponse;
 import io.arknights.dateorfriends.tools.web.BusinessException;
 import io.arknights.dateorfriends.tools.web.ErrorCode;
+import io.arknights.dateorfriends.tools.web.IpUtils;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpHeaders;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -30,7 +31,7 @@ public class AuthController {
      */
     @PostMapping("/login")
     public Mono<ApiResponse<TokenResponse>> login(@Valid @RequestBody LoginRequest request, ServerWebExchange exchange) {
-        var ip = resolveIp(exchange);
+        var ip = IpUtils.resolveClientIp(exchange);
         return authService.login(request.account(), request.password(), ip).map(ApiResponse::ok);
     }
 
@@ -40,7 +41,7 @@ public class AuthController {
      */
     @PostMapping("/register")
     public Mono<ApiResponse<RegisterResponse>> register(@Valid @RequestBody RegisterRequest request, ServerWebExchange exchange) {
-        var ip = resolveIp(exchange);
+        var ip = IpUtils.resolveClientIp(exchange);
         return authService.register(request.account(), request.email(), request.password(), request.nickname(), ip).map(ApiResponse::ok);
     }
 
@@ -82,19 +83,6 @@ public class AuthController {
             return Mono.error(new BusinessException(ErrorCode.UNAUTHORIZED));
         }
         return authService.logoutAll(principal.userId()).thenReturn(ApiResponse.ok(null));
-    }
-
-    private String resolveIp(ServerWebExchange exchange) {
-        var xff = exchange.getRequest().getHeaders().getFirst("X-Forwarded-For");
-        if (xff != null && !xff.isBlank()) {
-            var idx = xff.indexOf(',');
-            return idx >= 0 ? xff.substring(0, idx).trim() : xff.trim();
-        }
-        var addr = exchange.getRequest().getRemoteAddress();
-        if (addr == null || addr.getAddress() == null) {
-            return "unknown";
-        }
-        return addr.getAddress().getHostAddress();
     }
 
     private String resolveBearerToken(ServerWebExchange exchange) {

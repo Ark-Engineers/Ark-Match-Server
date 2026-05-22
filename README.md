@@ -199,6 +199,58 @@ java -jar server/target/server-0.0.1-SNAPSHOT.jar --server.port=0
   - [SoftDeletable.java](file:///c:/Users/MrLee/Desktop/%E7%BD%97%E5%BE%B7%E4%B9%8B%E9%97%A8/%E7%A8%8B%E5%BA%8F/dateOrFriends/server/src/main/java/io/arknights/dateorfriends/tools/softdelete/SoftDeletable.java)
   - [SoftDeleteUtils.java](file:///c:/Users/MrLee/Desktop/%E7%BD%97%E5%BE%B7%E4%B9%8B%E9%97%A8/%E7%A8%8B%E5%BA%8F/dateOrFriends/server/src/main/java/io/arknights/dateorfriends/tools/softdelete/SoftDeleteUtils.java)
 
+## 10. 管理员封禁系统
+
+### 10.1 功能概览
+
+- IP 封禁：被封禁 IP 无法登录、无法注册、无法访问任何接口（包含受保护资源）。
+- 邮箱封禁：被封禁邮箱无法登录、无法注册新账号；若该邮箱已存在账号，会立即失效其所有令牌（强制下线）。
+- 用户封禁（按 userId）：封禁后无法访问任何受保护资源，并强制下线；登录/刷新也会被拦截。
+- 支持单个封禁与批量封禁、封禁记录查询与 CSV 导出、到期自动解封（定时任务）。
+- 白名单：白名单内 IP/邮箱禁止被封禁（默认包含 127.0.0.1 / ::1，以及开发环境 admin@admin.com）。
+
+### 10.2 配置
+
+开发环境配置文件：`server/src/main/resources/application-dev.yaml`
+
+```yaml
+app:
+  security:
+    ban:
+      min-admin-weight: 100
+      whitelist-ips:
+        - 127.0.0.1
+        - ::1
+      whitelist-emails:
+        - admin@admin.com
+      expire-sweep-fixed-delay-ms: 60000
+      sync-active-bans-fixed-delay-ms: 300000
+```
+
+说明：
+
+- `/admin/**` 仅管理员可访问；封禁相关接口额外要求管理员 `weight >= min-admin-weight`。
+- IP 封禁通过全局 WebFilter 拦截，覆盖 `/auth/login`、`/auth/register`、`/auth/refresh` 及全部业务接口。
+
+### 10.3 管理端封禁接口（/admin/ban）
+
+- `POST /admin/ban/ip`：封禁单个 IP
+- `POST /admin/ban/ip/batch`：批量封禁 IP（必须 confirm=true）
+- `POST /admin/ban/email`：封禁单个邮箱
+- `POST /admin/ban/email/batch`：批量封禁邮箱（必须 confirm=true）
+- `POST /admin/ban/user`：封禁单个用户（按 userId）
+- `POST /admin/ban/user/batch`：批量封禁用户（按 userId；必须 confirm=true）
+- `POST /admin/ban/unban`：按 recordId 解封
+- `GET /admin/ban/records`：封禁记录查询（分页/筛选）
+- `GET /admin/ban/records/export`：导出封禁记录 CSV
+
+### 10.4 用户查询与三类封禁（/admin/user）
+
+- `GET /admin/user/search`：按 userId/account/email/ip 检索用户；返回用户基础信息 + 关联IP列表
+- `POST /admin/user/ban/ip-only`：仅封禁目标用户关联IP（不修改账号状态）
+- `POST /admin/user/ban/email-only`：仅封禁目标用户绑定邮箱（并强制下线）
+- `POST /admin/user/ban/full`：全封禁（关联IP + 邮箱 + 关联账号；必须 confirm=true）
+
 ## 10. SQL 规范
 
 - 所有建表/加字段/改字段/索引变更必须写 SQL 文件并提交到仓库

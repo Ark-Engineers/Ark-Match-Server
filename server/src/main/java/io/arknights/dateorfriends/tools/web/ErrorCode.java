@@ -12,6 +12,12 @@ public enum ErrorCode {
     ACCOUNT_BANNED(2004, "账号已封禁"),
     ACCOUNT_ALREADY_EXISTS(2005, "账号已存在"),
     EMAIL_ALREADY_EXISTS(2006, "邮箱已存在"),
+    IP_BANNED(2007, "IP已封禁"),
+    EMAIL_BANNED(2008, "邮箱已封禁"),
+    BATCH_CONFIRM_REQUIRED(2009, "批量操作需要二次确认"),
+    BAN_TARGET_WHITELISTED(2010, "封禁目标在白名单中，禁止操作"),
+    BAN_PERMISSION_REQUIRED(2011, "无权限执行封禁操作"),
+    ALREADY_BANNED(2012, "目标已处于封禁状态"),
 
     TOKEN_EXPIRED(3000, "令牌已过期"),
     TOKEN_REVOKED(3001, "令牌已失效"),

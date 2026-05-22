@@ -15,7 +15,7 @@ public class GlobalExceptionHandler {
     public ResponseEntity<ApiResponse<Void>> handleBusinessException(BusinessException e) {
         var status = switch (e.getErrorCode()) {
             case UNAUTHORIZED, TOKEN_EXPIRED, TOKEN_REVOKED, REFRESH_TOKEN_INVALID -> HttpStatus.UNAUTHORIZED;
-            case FORBIDDEN -> HttpStatus.FORBIDDEN;
+            case FORBIDDEN, IP_BANNED, EMAIL_BANNED, BAN_TARGET_WHITELISTED, BAN_PERMISSION_REQUIRED -> HttpStatus.FORBIDDEN;
             case PARAM_INVALID -> HttpStatus.BAD_REQUEST;
             default -> HttpStatus.BAD_REQUEST;
         };
@@ -37,4 +37,3 @@ public class GlobalExceptionHandler {
         return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(ApiResponse.fail(ErrorCode.INTERNAL_ERROR.code(), ErrorCode.INTERNAL_ERROR.defaultMessage()));
     }
 }
-

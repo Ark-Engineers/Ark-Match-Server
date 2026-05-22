@@ -8,6 +8,7 @@ import io.arknights.dateorfriends.modules.user.auth.mapper.UserMapper;
 import io.arknights.dateorfriends.modules.user.auth.service.AuthService;
 import io.arknights.dateorfriends.tools.jwt.JwtService;
 import io.arknights.dateorfriends.tools.jwt.JwtTokenType;
+import io.arknights.dateorfriends.tools.security.ban.BanService;
 import io.arknights.dateorfriends.tools.security.Role;
 import io.arknights.dateorfriends.tools.security.SecurityProperties;
 import io.arknights.dateorfriends.tools.security.token.RedisTokenStore;
@@ -31,6 +32,7 @@ public class AuthServiceImpl implements AuthService {
     private final RedisTokenStore tokenStore;
     private final SecurityProperties securityProperties;
     private final io.arknights.dateorfriends.tools.jwt.JwtProperties jwtProperties;
+    private final BanService banService;
 
     public AuthServiceImpl(
             UserMapper userMapper,
@@ -39,7 +41,8 @@ public class AuthServiceImpl implements AuthService {
             JwtService jwtService,
             RedisTokenStore tokenStore,
             SecurityProperties securityProperties,
-            io.arknights.dateorfriends.tools.jwt.JwtProperties jwtProperties
+            io.arknights.dateorfriends.tools.jwt.JwtProperties jwtProperties,
+            BanService banService
     ) {
         this.userMapper = userMapper;
         this.actionLogMapper = actionLogMapper;
@@ -48,13 +51,15 @@ public class AuthServiceImpl implements AuthService {
         this.tokenStore = tokenStore;
         this.securityProperties = securityProperties;
         this.jwtProperties = jwtProperties;
+        this.banService = banService;
     }
 
     @Override
     public Mono<TokenResponse> login(String account, String password, String ip) {
         return findUserByAccount(account)
                 .switchIfEmpty(Mono.error(new BusinessException(ErrorCode.USER_NOT_FOUND)))
-                .flatMap(user -> checkAndHandleLock(user)
+                .flatMap(user -> banService.checkEmailAllowed(user.getEmail())
+                        .then(checkAndHandleLock(user))
                         .then(verifyPassword(user, password))
                         .flatMap(ok -> {
                             if (!ok) {
@@ -67,34 +72,36 @@ public class AuthServiceImpl implements AuthService {
     @Override
     public Mono<RegisterResponse> register(String account, String email, String password, String nickname, String ip) {
         var finalNickname = nickname == null || nickname.isBlank() ? account : nickname;
-        return Mono.fromCallable(() -> userMapper.countByAccountAll(account))
-                .subscribeOn(Schedulers.boundedElastic())
-                .flatMap(count -> {
-                    if (count > 0) {
-                        return Mono.error(new BusinessException(ErrorCode.ACCOUNT_ALREADY_EXISTS));
-                    }
-                    return Mono.empty();
-                })
-                .then(Mono.fromCallable(() -> userMapper.countByEmailAll(email))
+        return banService.checkEmailAllowed(email).then(
+                Mono.fromCallable(() -> userMapper.countByAccountAll(account))
                         .subscribeOn(Schedulers.boundedElastic())
                         .flatMap(count -> {
                             if (count > 0) {
-                                return Mono.error(new BusinessException(ErrorCode.EMAIL_ALREADY_EXISTS));
+                                return Mono.error(new BusinessException(ErrorCode.ACCOUNT_ALREADY_EXISTS));
                             }
                             return Mono.empty();
-                        }))
-                .then(Mono.fromCallable(() -> {
-                    var passwordHash = passwordEncoder.encode(password);
-                    var user = new UserDO();
-                    user.setAccount(account);
-                    user.setEmail(email);
-                    user.setPasswordHash(passwordHash);
-                    user.setNickname(finalNickname);
-                    userMapper.insertUser(user);
-                    return user;
-                }).subscribeOn(Schedulers.boundedElastic()))
-                .flatMap(user -> insertActionLog(user.getId(), ip, "/auth/register")
-                        .thenReturn(new RegisterResponse(user.getId(), user.getAccount(), user.getEmail(), user.getNickname())));
+                        })
+                        .then(Mono.fromCallable(() -> userMapper.countByEmailAll(email))
+                                .subscribeOn(Schedulers.boundedElastic())
+                                .flatMap(count -> {
+                                    if (count > 0) {
+                                        return Mono.error(new BusinessException(ErrorCode.EMAIL_ALREADY_EXISTS));
+                                    }
+                                    return Mono.empty();
+                                }))
+                        .then(Mono.fromCallable(() -> {
+                            var passwordHash = passwordEncoder.encode(password);
+                            var user = new UserDO();
+                            user.setAccount(account);
+                            user.setEmail(email);
+                            user.setPasswordHash(passwordHash);
+                            user.setNickname(finalNickname);
+                            userMapper.insertUser(user);
+                            return user;
+                        }).subscribeOn(Schedulers.boundedElastic()))
+                        .flatMap(user -> insertActionLog(user.getId(), ip, "/auth/register")
+                                .thenReturn(new RegisterResponse(user.getId(), user.getAccount(), user.getEmail(), user.getNickname())))
+        );
     }
 
     @Override
@@ -124,7 +131,7 @@ public class AuthServiceImpl implements AuthService {
                                                     .then(tokenStore.blacklist(principal.jti(), remainingTtl(principal.expiresAt())))
                                                     .then(findUserById(principal.userId()))
                                                     .switchIfEmpty(Mono.error(new BusinessException(ErrorCode.USER_NOT_FOUND)))
-                                                    .flatMap(this::issueTokens);
+                                                    .flatMap(user -> banService.checkEmailAllowed(user.getEmail()).then(issueTokens(user)));
                                         });
                             });
                 });

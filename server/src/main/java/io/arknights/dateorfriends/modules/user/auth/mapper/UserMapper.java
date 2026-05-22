@@ -64,6 +64,204 @@ public interface UserMapper {
     UserDO selectById(@Param("id") long id);
 
     @Select("""
+            SELECT
+              id,
+              account,
+              email,
+              password_hash AS passwordHash,
+              role,
+              nickname,
+              avatar_url AS avatarUrl,
+              status,
+              email_verified_at AS emailVerifiedAt,
+              last_login_at AS lastLoginAt,
+              last_login_ip AS lastLoginIp,
+              login_fail_count AS loginFailCount,
+              locked_until AS lockedUntil,
+              created_at AS createdAt,
+              updated_at AS updatedAt,
+              deleted,
+              deleted_at AS deletedAt
+            FROM `user`
+            WHERE email = #{email}
+              AND deleted = 0
+            LIMIT 1
+            """)
+    UserDO selectByEmail(@Param("email") String email);
+
+    @Select("""
+            SELECT
+              id,
+              account,
+              email,
+              password_hash AS passwordHash,
+              role,
+              nickname,
+              avatar_url AS avatarUrl,
+              status,
+              email_verified_at AS emailVerifiedAt,
+              last_login_at AS lastLoginAt,
+              last_login_ip AS lastLoginIp,
+              login_fail_count AS loginFailCount,
+              locked_until AS lockedUntil,
+              created_at AS createdAt,
+              updated_at AS updatedAt,
+              deleted,
+              deleted_at AS deletedAt
+            FROM `user`
+            WHERE last_login_ip = #{ip}
+              AND deleted = 0
+            ORDER BY id DESC
+            LIMIT #{limit}
+            """)
+    java.util.List<UserDO> selectListByLastLoginIp(@Param("ip") String ip, @Param("limit") int limit);
+
+    @Select("""
+            <script>
+            SELECT
+              id,
+              account,
+              email,
+              password_hash AS passwordHash,
+              role,
+              nickname,
+              avatar_url AS avatarUrl,
+              status,
+              email_verified_at AS emailVerifiedAt,
+              last_login_at AS lastLoginAt,
+              last_login_ip AS lastLoginIp,
+              login_fail_count AS loginFailCount,
+              locked_until AS lockedUntil,
+              created_at AS createdAt,
+              updated_at AS updatedAt,
+              deleted,
+              deleted_at AS deletedAt
+            FROM `user`
+            WHERE id IN
+            <foreach item="id" collection="ids" open="(" separator="," close=")">
+              #{id}
+            </foreach>
+              AND deleted = 0
+            </script>
+            """)
+    java.util.List<UserDO> selectListByIds(@Param("ids") java.util.List<Long> ids);
+
+    @Select("""
+            SELECT
+              id,
+              account,
+              email,
+              password_hash AS passwordHash,
+              role,
+              nickname,
+              avatar_url AS avatarUrl,
+              status,
+              email_verified_at AS emailVerifiedAt,
+              last_login_at AS lastLoginAt,
+              last_login_ip AS lastLoginIp,
+              login_fail_count AS loginFailCount,
+              locked_until AS lockedUntil,
+              created_at AS createdAt,
+              updated_at AS updatedAt,
+              deleted,
+              deleted_at AS deletedAt
+            FROM `user`
+            WHERE account LIKE CONCAT('%', #{account}, '%')
+              AND deleted = 0
+            ORDER BY id DESC
+            LIMIT #{limit}
+            """)
+    java.util.List<UserDO> selectListByAccountLike(@Param("account") String account, @Param("limit") int limit);
+
+    @Select("""
+            SELECT
+              id,
+              account,
+              email,
+              password_hash AS passwordHash,
+              role,
+              nickname,
+              avatar_url AS avatarUrl,
+              status,
+              email_verified_at AS emailVerifiedAt,
+              last_login_at AS lastLoginAt,
+              last_login_ip AS lastLoginIp,
+              login_fail_count AS loginFailCount,
+              locked_until AS lockedUntil,
+              created_at AS createdAt,
+              updated_at AS updatedAt,
+              deleted,
+              deleted_at AS deletedAt
+            FROM `user`
+            WHERE email LIKE CONCAT('%', #{email}, '%')
+              AND deleted = 0
+            ORDER BY id DESC
+            LIMIT #{limit}
+            """)
+    java.util.List<UserDO> selectListByEmailLike(@Param("email") String email, @Param("limit") int limit);
+
+    @Select("""
+            SELECT
+              id,
+              account,
+              email,
+              password_hash AS passwordHash,
+              role,
+              nickname,
+              avatar_url AS avatarUrl,
+              status,
+              email_verified_at AS emailVerifiedAt,
+              last_login_at AS lastLoginAt,
+              last_login_ip AS lastLoginIp,
+              login_fail_count AS loginFailCount,
+              locked_until AS lockedUntil,
+              created_at AS createdAt,
+              updated_at AS updatedAt,
+              deleted,
+              deleted_at AS deletedAt
+            FROM `user`
+            WHERE last_login_ip LIKE CONCAT('%', #{ip}, '%')
+              AND deleted = 0
+            ORDER BY id DESC
+            LIMIT #{limit}
+            """)
+    java.util.List<UserDO> selectListByLastLoginIpLike(@Param("ip") String ip, @Param("limit") int limit);
+
+    @Select("""
+            SELECT
+              id,
+              account,
+              email,
+              password_hash AS passwordHash,
+              role,
+              nickname,
+              avatar_url AS avatarUrl,
+              status,
+              email_verified_at AS emailVerifiedAt,
+              last_login_at AS lastLoginAt,
+              last_login_ip AS lastLoginIp,
+              login_fail_count AS loginFailCount,
+              locked_until AS lockedUntil,
+              created_at AS createdAt,
+              updated_at AS updatedAt,
+              deleted,
+              deleted_at AS deletedAt
+            FROM `user`
+            WHERE nickname LIKE CONCAT('%', #{nickname}, '%')
+              AND deleted = 0
+            ORDER BY id DESC
+            LIMIT #{limit}
+            """)
+    java.util.List<UserDO> selectListByNicknameLike(@Param("nickname") String nickname, @Param("limit") int limit);
+
+    @Update("""
+            UPDATE `user`
+            SET status = #{status}
+            WHERE id = #{id}
+            """)
+    int updateStatus(@Param("id") long id, @Param("status") String status);
+
+    @Select("""
             SELECT COUNT(1)
             FROM `user`
             WHERE role = 'ADMIN'

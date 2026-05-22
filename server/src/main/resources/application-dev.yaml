@@ -36,6 +36,15 @@ app:
   security:
     login-fail-lock-threshold: 5
     login-fail-lock-minutes: 15
+    ban:
+      min-admin-weight: 100
+      whitelist-ips:
+        - 127.0.0.1
+        - ::1
+      whitelist-emails:
+        - admin@admin.com
+      expire-sweep-fixed-delay-ms: 60000
+      sync-active-bans-fixed-delay-ms: 300000
   admin:
     bootstrap:
       account: admin
