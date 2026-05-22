@@ -1,0 +1,58 @@
+spring:
+  config:
+    activate:
+      # 开发环境 profile
+      on-profile: prod
+  datasource:
+    url: ${DB_URL:jdbc:mysql://i.leningcloud.com:3306/ark_match?useUnicode=true&characterEncoding=utf8&useSSL=false&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true}
+    username: ark_match
+    password: ark123
+  data:
+    redis:
+      host: i.leningcloud.com
+      port: 6379
+      password: shengda
+
+server:
+  # 开发环境默认端口（本地启动用）
+  port: 9846
+
+logging:
+  level:
+    root: INFO
+    # 开发环境建议开启项目包 DEBUG，方便排查问题
+    io.arknights: DEBUG
+
+mybatis:
+  configuration:
+    map-underscore-to-camel-case: true
+
+app:
+  jwt:
+    secret: ${JWT_SECRET:dev-jwt-secret-change-me}
+    issuer: ${JWT_ISSUER:dateOrFriends}
+    access-ttl-seconds: 7200
+    refresh-ttl-seconds: 1296000
+  security:
+    login-fail-lock-threshold: 5
+    login-fail-lock-minutes: 15
+    ban:
+      min-admin-weight: 100
+      whitelist-ips:
+        - 127.0.0.1
+        - ::1
+      whitelist-emails:
+        - admin@admin.com
+      expire-sweep-fixed-delay-ms: 60000
+      sync-active-bans-fixed-delay-ms: 300000
+  admin:
+    bootstrap:
+      super-account: superadmin
+      super-password: 123456
+      super-email: superadmin@example.com
+      super-nickname: 超级管理员
+
+      admin-account: admin
+      admin-password: 123456
+      admin-email: admin@example.com
+      admin-nickname: 管理员
