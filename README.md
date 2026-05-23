@@ -352,6 +352,107 @@ app:
 | to_role | VARCHAR(32) | 变更后角色（USER/ADMIN/SUPER_ADMIN） |
 | created_at | DATETIME | 操作时间 |
 
+### 11.5 notice（公告表）
+
+- SQL：[notice.sql](file:///c:/Users/MrLee/Desktop/%E7%BD%97%E5%BE%B7%E4%B9%8B%E9%97%A8/%E7%A8%8B%E5%BA%8F/dateOrFriends/server/src/main/resources/sql/modules/admin/notice.sql)
+
+| 字段 | 类型 | 备注 |
+|---|---|---|
+| id | BIGINT | 主键，自增 |
+| title | VARCHAR(128) | 标题 |
+| content | TEXT | 内容（按原样展示） |
+| level | ENUM(NORMAL,IMPORTANT) | 等级：普通/重要（可强提醒） |
+| status | ENUM(DRAFT,PUBLISHED,OFFLINE) | 状态：草稿/已发布/已下线 |
+| pinned | TINYINT(1) | 是否置顶：0 否；1 是 |
+| publish_at | DATETIME NULL | 发布时间（未发布为 NULL） |
+| expire_at | DATETIME NULL | 过期时间（NULL=不过期） |
+| created_by | BIGINT | 创建人ID（user.id） |
+| updated_by | BIGINT | 最后修改人ID（user.id） |
+| deleted | TINYINT(1) | 软删除标记：0 否；1 是 |
+| created_at | DATETIME | 创建时间 |
+| updated_at | DATETIME | 更新时间 |
+
+常用索引（详见 SQL）：
+- `idx_notice_status(status)`：按状态查询
+- `idx_notice_level(level)`：按等级查询
+- `idx_notice_pinned(pinned)`：按置顶查询
+- `idx_notice_publish_at(publish_at)`：按发布时间查询
+- `ft_notice_keyword(title,content)`：关键词全文索引
+
+### 11.6 notice_read（公告已读记录，只读追加）
+
+- SQL：[notice.sql](file:///c:/Users/MrLee/Desktop/%E7%BD%97%E5%BE%B7%E4%B9%8B%E9%97%A8/%E7%A8%8B%E5%BA%8F/dateOrFriends/server/src/main/resources/sql/modules/admin/notice.sql)
+
+| 字段 | 类型 | 备注 |
+|---|---|---|
+| id | BIGINT | 主键，自增 |
+| notice_id | BIGINT | 公告ID（notice.id） |
+| user_id | BIGINT | 用户ID（user.id） |
+| read_at | DATETIME | 阅读时间 |
+
+### 11.7 notice_operation_log（公告操作审计日志，只读追加）
+
+- SQL：[notice.sql](file:///c:/Users/MrLee/Desktop/%E7%BD%97%E5%BE%B7%E4%B9%8B%E9%97%A8/%E7%A8%8B%E5%BA%8F/dateOrFriends/server/src/main/resources/sql/modules/admin/notice.sql)
+
+| 字段 | 类型 | 备注 |
+|---|---|---|
+| id | BIGINT | 主键，自增 |
+| notice_id | BIGINT | 公告ID（notice.id） |
+| actor_id | BIGINT NULL | 操作人ID（管理员 user.id；系统自动为 NULL） |
+| actor_role | VARCHAR(32) NULL | 操作人角色（ADMIN 等） |
+| action_type | ENUM(CREATE,UPDATE,PUBLISH,OFFLINE,DELETE) | 操作类型 |
+| ip | VARCHAR(64) NULL | 客户端IP（基于请求头解析） |
+| detail | VARCHAR(512) NULL | 操作说明（简要描述） |
+| created_at | DATETIME | 操作时间 |
+
+### 11.8 user_manage_operation_log（用户管理操作审计日志，只读追加）
+
+- SQL：[user_manage.sql](file:///c:/Users/MrLee/Desktop/%E7%BD%97%E5%BE%B7%E4%B9%8B%E9%97%A8/%E7%A8%8B%E5%BA%8F/dateOrFriends/server/src/main/resources/sql/modules/admin/user_manage.sql)
+
+| 字段 | 类型 | 备注 |
+|---|---|---|
+| id | BIGINT | 主键，自增 |
+| actor_id | BIGINT NULL | 操作人ID（管理员 user.id；系统自动为 NULL） |
+| actor_role | VARCHAR(32) NULL | 操作人角色（ADMIN/SUPER_ADMIN 等；系统自动为 NULL） |
+| target_user_id | BIGINT | 被操作的目标用户ID（user.id） |
+| action_type | VARCHAR(64) | 操作类型（如 UPDATE_PROFILE/RESET_PASSWORD/DEACTIVATE/BAN/UNBAN/GRANT_ADMIN/REVOKE_ADMIN 等） |
+| ip | VARCHAR(64) NULL | 客户端IP（基于请求头解析） |
+| detail | VARCHAR(512) NULL | 简要说明（便于后台直接展示） |
+| diff_json | JSON NULL | 字段级变更详情（before/after） |
+| created_at | DATETIME | 操作时间 |
+
+### 11.9 site_notification（站内通知主体）
+
+- SQL：[notification.sql](file:///c:/Users/MrLee/Desktop/%E7%BD%97%E5%BE%B7%E4%B9%8B%E9%97%A8/%E7%A8%8B%E5%BA%8F/dateOrFriends/server/src/main/resources/sql/modules/user/notification.sql)
+
+| 字段 | 类型 | 备注 |
+|---|---|---|
+| id | BIGINT | 主键，自增 |
+| type | VARCHAR(64) | 通知类型（如 SYSTEM/SECURITY/ACCOUNT 等） |
+| title | VARCHAR(128) | 标题 |
+| content | TEXT | 内容（按原样展示） |
+| level | ENUM(NORMAL,IMPORTANT) | 等级：普通/重要 |
+| link_url | VARCHAR(512) NULL | 跳转链接（站内路由/外链） |
+| payload_json | JSON NULL | 结构化扩展数据 |
+| status | ENUM(SENT,OFFLINE) | 状态：已发送/下线 |
+| expire_at | DATETIME NULL | 过期时间（NULL=不过期） |
+| created_by | BIGINT NULL | 创建人ID（管理员 user.id；系统创建为 NULL） |
+| created_at | DATETIME | 创建时间 |
+| updated_at | DATETIME | 更新时间 |
+
+### 11.10 site_notification_user（站内通知投递与已读状态）
+
+- SQL：[notification.sql](file:///c:/Users/MrLee/Desktop/%E7%BD%97%E5%BE%B7%E4%B9%8B%E9%97%A8/%E7%A8%8B%E5%BA%8F/dateOrFriends/server/src/main/resources/sql/modules/user/notification.sql)
+
+| 字段 | 类型 | 备注 |
+|---|---|---|
+| id | BIGINT | 主键，自增 |
+| notification_id | BIGINT | 通知ID（site_notification.id） |
+| user_id | BIGINT | 接收用户ID（user.id） |
+| read | TINYINT(1) | 是否已读：0 未读；1 已读 |
+| read_at | DATETIME NULL | 阅读时间（未读为 NULL） |
+| created_at | DATETIME | 投递时间 |
+
 ## 12. 测试说明
 
 - 按当前约定：项目不提交测试代码与测试依赖

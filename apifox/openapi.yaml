@@ -1265,6 +1265,1048 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ApiResponseError'
+  /admin/user-manage/users:
+    get:
+      tags: [Admin]
+      summary: 超级管理员-用户管理-用户列表
+      description: 仅 SUPER_ADMIN 可访问；支持多条件组合查询与分页
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: keyword
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: account
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: nickname
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: role
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [USER, ADMIN, SUPER_ADMIN]
+        - name: status
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [NORMAL, SUSPENDED, BANNED]
+        - name: createdFrom
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: createdTo
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: includeDeleted
+          in: query
+          required: false
+          schema:
+            type: integer
+            format: int32
+            default: 0
+        - name: page
+          in: query
+          required: false
+          schema:
+            type: integer
+            format: int32
+            default: 1
+        - name: size
+          in: query
+          required: false
+          schema:
+            type: integer
+            format: int32
+            default: 20
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponsePageUserManageUser'
+        '401':
+          description: 未登录或令牌无效
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseError'
+        '403':
+          description: 无权限（仅超级管理员）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseError'
+  /admin/user-manage/update-profile:
+    post:
+      tags: [Admin]
+      summary: 超级管理员-用户管理-修改昵称/账号
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UserManageUpdateProfileRequest'
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseVoid'
+        '401':
+          description: 未登录或令牌无效
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseError'
+        '403':
+          description: 无权限（仅超级管理员）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseError'
+  /admin/user-manage/reset-password:
+    post:
+      tags: [Admin]
+      summary: 超级管理员-用户管理-重置密码（生成临时密码）
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UserManageResetPasswordRequest'
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseUserManageResetPasswordResponse'
+        '401':
+          description: 未登录或令牌无效
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseError'
+        '403':
+          description: 无权限（仅超级管理员）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseError'
+  /admin/user-manage/deactivate:
+    post:
+      tags: [Admin]
+      summary: 超级管理员-用户管理-注销账号（软删除）
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UserManageDeactivateRequest'
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseVoid'
+        '401':
+          description: 未登录或令牌无效
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseError'
+        '403':
+          description: 无权限（仅超级管理员）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseError'
+  /admin/user-manage/grant-admin:
+    post:
+      tags: [Admin]
+      summary: 超级管理员-用户管理-授权管理员
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UserManageGrantAdminRequest'
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseVoid'
+        '401':
+          description: 未登录或令牌无效
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseError'
+        '403':
+          description: 无权限（仅超级管理员）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseError'
+  /admin/user-manage/revoke-admin:
+    post:
+      tags: [Admin]
+      summary: 超级管理员-用户管理-撤销管理员
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UserManageRevokeAdminRequest'
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseVoid'
+        '401':
+          description: 未登录或令牌无效
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseError'
+        '403':
+          description: 无权限（仅超级管理员）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseError'
+  /admin/user-manage/ban:
+    post:
+      tags: [Admin]
+      summary: 超级管理员-用户管理-封禁用户
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UserManageBanUserRequest'
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseVoid'
+        '401':
+          description: 未登录或令牌无效
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseError'
+        '403':
+          description: 无权限（仅超级管理员）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseError'
+  /admin/user-manage/unban:
+    post:
+      tags: [Admin]
+      summary: 超级管理员-用户管理-解禁用户（撤销该用户所有生效封禁记录）
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UserManageUnbanUserRequest'
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseVoid'
+        '401':
+          description: 未登录或令牌无效
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseError'
+        '403':
+          description: 无权限（仅超级管理员）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseError'
+  /admin/user-manage/logs:
+    get:
+      tags: [Admin]
+      summary: 超级管理员-用户管理-审计日志
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: targetUserId
+          in: query
+          required: false
+          schema:
+            type: integer
+            format: int64
+        - name: actorId
+          in: query
+          required: false
+          schema:
+            type: integer
+            format: int64
+        - name: actionType
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: keyword
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: fromTime
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: toTime
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: page
+          in: query
+          required: false
+          schema:
+            type: integer
+            format: int32
+            default: 1
+        - name: size
+          in: query
+          required: false
+          schema:
+            type: integer
+            format: int32
+            default: 20
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponsePageUserManageOperationLog'
+        '401':
+          description: 未登录或令牌无效
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseError'
+        '403':
+          description: 无权限（仅超级管理员）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseError'
+  /admin/user-manage/logs/export:
+    get:
+      tags: [Admin]
+      summary: 超级管理员-用户管理-导出审计日志
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: targetUserId
+          in: query
+          required: false
+          schema:
+            type: integer
+            format: int64
+        - name: actorId
+          in: query
+          required: false
+          schema:
+            type: integer
+            format: int64
+        - name: actionType
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: keyword
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: fromTime
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: toTime
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: ids
+          in: query
+          required: false
+          schema:
+            type: string
+      responses:
+        '200':
+          description: CSV 文件
+          content:
+            text/csv:
+              schema:
+                type: string
+                format: binary
+        '401':
+          description: 未登录或令牌无效
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseError'
+        '403':
+          description: 无权限（仅超级管理员）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseError'
+  /admin/user-manage/users/{id}/bans:
+    get:
+      tags: [Admin]
+      summary: 超级管理员-用户管理-查询用户封禁记录
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+        - name: status
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [ACTIVE, EXPIRED, REVOKED]
+        - name: page
+          in: query
+          required: false
+          schema:
+            type: integer
+            format: int32
+            default: 1
+        - name: size
+          in: query
+          required: false
+          schema:
+            type: integer
+            format: int32
+            default: 20
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponsePageBanRecord'
+        '401':
+          description: 未登录或令牌无效
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseError'
+        '403':
+          description: 无权限（仅超级管理员）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseError'
+  /admin/notice/list:
+    get:
+      tags: [Admin]
+      summary: 公告管理-列表
+      description: 管理端分页查询公告（ADMIN/SUPER_ADMIN）
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: keyword
+          in: query
+          required: false
+          schema:
+            type: string
+          description: 标题/内容关键词（全文索引）
+        - name: status
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [DRAFT, PUBLISHED, OFFLINE]
+        - name: level
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [NORMAL, IMPORTANT]
+        - name: pinned
+          in: query
+          required: false
+          schema:
+            type: integer
+            format: int32
+            enum: [0, 1]
+        - name: publishFrom
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date-time
+        - name: publishTo
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date-time
+        - name: page
+          in: query
+          required: false
+          schema:
+            type: integer
+            format: int32
+            default: 1
+        - name: size
+          in: query
+          required: false
+          schema:
+            type: integer
+            format: int32
+            default: 20
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponsePageNotice'
+        '401':
+          description: 未登录或令牌无效
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseError'
+  /admin/notice/create:
+    post:
+      tags: [Admin]
+      summary: 公告管理-创建
+      description: 创建公告（默认草稿）
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateNoticeRequest'
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseNotice'
+        '400':
+          description: 参数不合法
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseError'
+        '401':
+          description: 未登录或令牌无效
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseError'
+  /admin/notice/update:
+    post:
+      tags: [Admin]
+      summary: 公告管理-更新
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateNoticeRequest'
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseNotice'
+        '400':
+          description: 参数不合法/公告不存在
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseError'
+        '401':
+          description: 未登录或令牌无效
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseError'
+  /admin/notice/publish:
+    post:
+      tags: [Admin]
+      summary: 公告管理-发布
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/IdRequest'
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseNotice'
+        '400':
+          description: 公告不存在/操作失败
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseError'
+        '401':
+          description: 未登录或令牌无效
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseError'
+  /admin/notice/offline:
+    post:
+      tags: [Admin]
+      summary: 公告管理-下线
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/IdRequest'
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseNotice'
+        '400':
+          description: 公告不存在/操作失败
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseError'
+        '401':
+          description: 未登录或令牌无效
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseError'
+  /admin/notice/delete:
+    post:
+      tags: [Admin]
+      summary: 公告管理-删除
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/IdRequest'
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseVoid'
+        '400':
+          description: 公告不存在/操作失败
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseError'
+        '401':
+          description: 未登录或令牌无效
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseError'
+  /admin/notice/{id}:
+    get:
+      tags: [Admin]
+      summary: 公告管理-详情
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseNotice'
+        '400':
+          description: 参数不合法
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseError'
+        '401':
+          description: 未登录或令牌无效
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseError'
+  /admin/notice/logs:
+    get:
+      tags: [Admin]
+      summary: 公告管理-操作日志
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: noticeId
+          in: query
+          required: false
+          schema:
+            type: integer
+            format: int64
+        - name: actorId
+          in: query
+          required: false
+          schema:
+            type: integer
+            format: int64
+        - name: actionType
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [CREATE, UPDATE, PUBLISH, OFFLINE, DELETE]
+        - name: fromTime
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date-time
+        - name: toTime
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date-time
+        - name: page
+          in: query
+          required: false
+          schema:
+            type: integer
+            format: int32
+            default: 1
+        - name: size
+          in: query
+          required: false
+          schema:
+            type: integer
+            format: int32
+            default: 20
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponsePageNoticeLog'
+        '401':
+          description: 未登录或令牌无效
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseError'
+  /admin/notice/logs/export:
+    get:
+      tags: [Admin]
+      summary: 公告管理-导出操作日志
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: noticeId
+          in: query
+          required: false
+          schema:
+            type: integer
+            format: int64
+      responses:
+        '200':
+          description: CSV 文件
+          content:
+            text/csv:
+              schema:
+                type: string
+                format: binary
+        '401':
+          description: 未登录或令牌无效
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseError'
+  /user/notices:
+    get:
+      tags: [User]
+      summary: 用户端-公告列表
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: keyword
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: page
+          in: query
+          required: false
+          schema:
+            type: integer
+            format: int32
+            default: 1
+        - name: size
+          in: query
+          required: false
+          schema:
+            type: integer
+            format: int32
+            default: 10
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponsePageUserNotice'
+        '401':
+          description: 未登录或令牌无效
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseError'
+  /user/notices/popup:
+    get:
+      tags: [User]
+      summary: 用户端-重要公告弹窗
+      description: 返回“未读的重要公告”1条；若没有则 data=null
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseUserNoticeNullable'
+        '401':
+          description: 未登录或令牌无效
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseError'
+  /user/notices/{id}:
+    get:
+      tags: [User]
+      summary: 用户端-公告详情（并标记已读）
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseUserNotice'
+        '400':
+          description: 参数不合法/公告不存在
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseError'
+        '401':
+          description: 未登录或令牌无效
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseError'
+  /user/notices/read:
+    post:
+      tags: [User]
+      summary: 用户端-标记公告已读
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MarkNoticeReadRequest'
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseVoid'
+        '401':
+          description: 未登录或令牌无效
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseError'
+  /user/notifications:
+    get:
+      tags: [User]
+      summary: 用户端-站内通知收件箱
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: read
+          in: query
+          required: false
+          schema:
+            type: integer
+            format: int32
+            description: 0=未读；1=已读；不传=全部
+        - name: page
+          in: query
+          required: false
+          schema:
+            type: integer
+            format: int32
+            default: 1
+        - name: size
+          in: query
+          required: false
+          schema:
+            type: integer
+            format: int32
+            default: 20
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponsePageUserInboxNotification'
+        '401':
+          description: 未登录或令牌无效
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseError'
+  /user/notifications/unread-count:
+    get:
+      tags: [User]
+      summary: 用户端-站内通知未读数量
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseLong'
+        '401':
+          description: 未登录或令牌无效
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseError'
+  /user/notifications/read:
+    post:
+      tags: [User]
+      summary: 用户端-标记站内通知已读
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MarkNotificationReadRequest'
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseVoid'
+        '401':
+          description: 未登录或令牌无效
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseError'
 components:
   securitySchemes:
     bearerAuth:
@@ -1978,3 +3020,639 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/UserSearchItem'
+    Notice:
+      type: object
+      required: [id, title, content, level, status, pinned, createdBy, updatedBy, createdAt, updatedAt]
+      properties:
+        id:
+          type: integer
+          format: int64
+        title:
+          type: string
+        content:
+          type: string
+        level:
+          type: string
+          enum: [NORMAL, IMPORTANT]
+        status:
+          type: string
+          enum: [DRAFT, PUBLISHED, OFFLINE]
+        pinned:
+          type: boolean
+        publishAt:
+          type: string
+          format: date-time
+          nullable: true
+        expireAt:
+          type: string
+          format: date-time
+          nullable: true
+        createdBy:
+          type: integer
+          format: int64
+        updatedBy:
+          type: integer
+          format: int64
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+    CreateNoticeRequest:
+      type: object
+      required: [title, content]
+      properties:
+        title:
+          type: string
+          maxLength: 128
+        content:
+          type: string
+        level:
+          type: string
+          enum: [NORMAL, IMPORTANT]
+          default: NORMAL
+        pinned:
+          type: boolean
+          default: false
+        expireAt:
+          type: string
+          format: date-time
+          nullable: true
+    UpdateNoticeRequest:
+      type: object
+      required: [id, title, content]
+      properties:
+        id:
+          type: integer
+          format: int64
+        title:
+          type: string
+          maxLength: 128
+        content:
+          type: string
+        level:
+          type: string
+          enum: [NORMAL, IMPORTANT]
+          default: NORMAL
+        pinned:
+          type: boolean
+          default: false
+        expireAt:
+          type: string
+          format: date-time
+          nullable: true
+    IdRequest:
+      type: object
+      required: [id]
+      properties:
+        id:
+          type: integer
+          format: int64
+    NoticeLog:
+      type: object
+      required: [id, noticeId, actionType, createdAt]
+      properties:
+        id:
+          type: integer
+          format: int64
+        noticeId:
+          type: integer
+          format: int64
+        actorId:
+          type: integer
+          format: int64
+          nullable: true
+        actorRole:
+          type: string
+          nullable: true
+        actionType:
+          type: string
+          enum: [CREATE, UPDATE, PUBLISH, OFFLINE, DELETE]
+        ip:
+          type: string
+          nullable: true
+        detail:
+          type: string
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+    PageNotice:
+      type: object
+      required: [total, page, size, items]
+      properties:
+        total:
+          type: integer
+          format: int64
+        page:
+          type: integer
+          format: int32
+        size:
+          type: integer
+          format: int32
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/Notice'
+    ApiResponseNotice:
+      type: object
+      required: [code, message, data]
+      properties:
+        code:
+          type: integer
+          format: int32
+          example: 0
+        message:
+          type: string
+          example: ok
+        data:
+          $ref: '#/components/schemas/Notice'
+    ApiResponsePageNotice:
+      type: object
+      required: [code, message, data]
+      properties:
+        code:
+          type: integer
+          format: int32
+          example: 0
+        message:
+          type: string
+          example: ok
+        data:
+          $ref: '#/components/schemas/PageNotice'
+    PageNoticeLog:
+      type: object
+      required: [total, page, size, items]
+      properties:
+        total:
+          type: integer
+          format: int64
+        page:
+          type: integer
+          format: int32
+        size:
+          type: integer
+          format: int32
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/NoticeLog'
+    ApiResponsePageNoticeLog:
+      type: object
+      required: [code, message, data]
+      properties:
+        code:
+          type: integer
+          format: int32
+          example: 0
+        message:
+          type: string
+          example: ok
+        data:
+          $ref: '#/components/schemas/PageNoticeLog'
+    UserNotice:
+      type: object
+      required: [id, title, content, level, pinned, read]
+      properties:
+        id:
+          type: integer
+          format: int64
+        title:
+          type: string
+        content:
+          type: string
+        level:
+          type: string
+        pinned:
+          type: boolean
+        publishAt:
+          type: string
+          format: date-time
+          nullable: true
+        expireAt:
+          type: string
+          format: date-time
+          nullable: true
+        read:
+          type: boolean
+    PageUserNotice:
+      type: object
+      required: [total, page, size, items]
+      properties:
+        total:
+          type: integer
+          format: int64
+        page:
+          type: integer
+          format: int32
+        size:
+          type: integer
+          format: int32
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/UserNotice'
+    ApiResponseUserNotice:
+      type: object
+      required: [code, message, data]
+      properties:
+        code:
+          type: integer
+          format: int32
+          example: 0
+        message:
+          type: string
+          example: ok
+        data:
+          $ref: '#/components/schemas/UserNotice'
+    ApiResponseUserNoticeNullable:
+      type: object
+      required: [code, message, data]
+      properties:
+        code:
+          type: integer
+          format: int32
+          example: 0
+        message:
+          type: string
+          example: ok
+        data:
+          $ref: '#/components/schemas/UserNotice'
+          nullable: true
+    ApiResponsePageUserNotice:
+      type: object
+      required: [code, message, data]
+      properties:
+        code:
+          type: integer
+          format: int32
+          example: 0
+        message:
+          type: string
+          example: ok
+        data:
+          $ref: '#/components/schemas/PageUserNotice'
+    MarkNoticeReadRequest:
+      type: object
+      required: [noticeId]
+      properties:
+        noticeId:
+          type: integer
+          format: int64
+    ApiResponseLong:
+      type: object
+      required: [code, message, data]
+      properties:
+        code:
+          type: integer
+          format: int32
+          example: 0
+        message:
+          type: string
+          example: ok
+        data:
+          type: integer
+          format: int64
+    UserManageUser:
+      type: object
+      required: [id, account, email, role, nickname, status, createdAt, updatedAt, deleted]
+      properties:
+        id:
+          type: integer
+          format: int64
+        account:
+          type: string
+        email:
+          type: string
+        role:
+          type: string
+          enum: [USER, ADMIN, SUPER_ADMIN]
+        nickname:
+          type: string
+        avatarUrl:
+          type: string
+          nullable: true
+        status:
+          type: string
+          enum: [NORMAL, SUSPENDED, BANNED]
+        emailVerifiedAt:
+          type: string
+          format: date-time
+          nullable: true
+        lastLoginAt:
+          type: string
+          format: date-time
+          nullable: true
+        lastLoginIp:
+          type: string
+          nullable: true
+        loginFailCount:
+          type: integer
+          format: int32
+          nullable: true
+        lockedUntil:
+          type: string
+          format: date-time
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+        deleted:
+          type: integer
+          format: int32
+        deletedAt:
+          type: string
+          format: date-time
+          nullable: true
+    PageUserManageUser:
+      type: object
+      required: [total, page, size, items]
+      properties:
+        total:
+          type: integer
+          format: int64
+        page:
+          type: integer
+          format: int32
+        size:
+          type: integer
+          format: int32
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/UserManageUser'
+    ApiResponsePageUserManageUser:
+      type: object
+      required: [code, message, data]
+      properties:
+        code:
+          type: integer
+          format: int32
+          example: 0
+        message:
+          type: string
+          example: ok
+        data:
+          $ref: '#/components/schemas/PageUserManageUser'
+    UserManageUpdateProfileRequest:
+      type: object
+      required: [userId, confirm]
+      properties:
+        userId:
+          type: integer
+          format: int64
+        account:
+          type: string
+          nullable: true
+        nickname:
+          type: string
+          nullable: true
+        reason:
+          type: string
+          nullable: true
+        confirm:
+          type: boolean
+          default: true
+    UserManageResetPasswordRequest:
+      type: object
+      required: [userId, confirm]
+      properties:
+        userId:
+          type: integer
+          format: int64
+        reason:
+          type: string
+          nullable: true
+        confirm:
+          type: boolean
+          default: true
+    UserManageResetPasswordResponse:
+      type: object
+      required: [tempPassword]
+      properties:
+        tempPassword:
+          type: string
+          description: 临时密码（仅超级管理员可见；同时会推送站内通知给用户）
+    ApiResponseUserManageResetPasswordResponse:
+      type: object
+      required: [code, message, data]
+      properties:
+        code:
+          type: integer
+          format: int32
+          example: 0
+        message:
+          type: string
+          example: ok
+        data:
+          $ref: '#/components/schemas/UserManageResetPasswordResponse'
+    UserManageDeactivateRequest:
+      type: object
+      required: [userId, confirm]
+      properties:
+        userId:
+          type: integer
+          format: int64
+        reason:
+          type: string
+          nullable: true
+        confirm:
+          type: boolean
+          default: true
+    UserManageGrantAdminRequest:
+      type: object
+      required: [userId, confirm]
+      properties:
+        userId:
+          type: integer
+          format: int64
+        reason:
+          type: string
+          nullable: true
+        confirm:
+          type: boolean
+          default: true
+    UserManageRevokeAdminRequest:
+      type: object
+      required: [userId, confirm]
+      properties:
+        userId:
+          type: integer
+          format: int64
+        reason:
+          type: string
+          nullable: true
+        confirm:
+          type: boolean
+          default: true
+    UserManageBanUserRequest:
+      type: object
+      required: [userId]
+      properties:
+        userId:
+          type: integer
+          format: int64
+        reason:
+          type: string
+          nullable: true
+        durationSeconds:
+          type: integer
+          format: int64
+          nullable: true
+    UserManageUnbanUserRequest:
+      type: object
+      required: [userId, confirm]
+      properties:
+        userId:
+          type: integer
+          format: int64
+        reason:
+          type: string
+          nullable: true
+        confirm:
+          type: boolean
+          default: true
+    UserManageOperationLog:
+      type: object
+      required: [id, targetUserId, actionType, createdAt]
+      properties:
+        id:
+          type: integer
+          format: int64
+        actorId:
+          type: integer
+          format: int64
+          nullable: true
+        actorRole:
+          type: string
+          nullable: true
+        targetUserId:
+          type: integer
+          format: int64
+        actionType:
+          type: string
+        ip:
+          type: string
+          nullable: true
+        detail:
+          type: string
+          nullable: true
+        diffJson:
+          type: string
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+    PageUserManageOperationLog:
+      type: object
+      required: [total, page, size, items]
+      properties:
+        total:
+          type: integer
+          format: int64
+        page:
+          type: integer
+          format: int32
+        size:
+          type: integer
+          format: int32
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/UserManageOperationLog'
+    ApiResponsePageUserManageOperationLog:
+      type: object
+      required: [code, message, data]
+      properties:
+        code:
+          type: integer
+          format: int32
+          example: 0
+        message:
+          type: string
+          example: ok
+        data:
+          $ref: '#/components/schemas/PageUserManageOperationLog'
+    UserInboxNotification:
+      type: object
+      required: [id, notificationId, type, title, content, level, read, deliveredAt]
+      properties:
+        id:
+          type: integer
+          format: int64
+        notificationId:
+          type: integer
+          format: int64
+        type:
+          type: string
+        title:
+          type: string
+        content:
+          type: string
+        level:
+          type: string
+          enum: [NORMAL, IMPORTANT]
+        linkUrl:
+          type: string
+          nullable: true
+        payloadJson:
+          type: string
+          nullable: true
+        expireAt:
+          type: string
+          format: date-time
+          nullable: true
+        notificationCreatedAt:
+          type: string
+          format: date-time
+          nullable: true
+        read:
+          type: boolean
+        readAt:
+          type: string
+          format: date-time
+          nullable: true
+        deliveredAt:
+          type: string
+          format: date-time
+    PageUserInboxNotification:
+      type: object
+      required: [total, page, size, items]
+      properties:
+        total:
+          type: integer
+          format: int64
+        page:
+          type: integer
+          format: int32
+        size:
+          type: integer
+          format: int32
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/UserInboxNotification'
+    ApiResponsePageUserInboxNotification:
+      type: object
+      required: [code, message, data]
+      properties:
+        code:
+          type: integer
+          format: int32
+          example: 0
+        message:
+          type: string
+          example: ok
+        data:
+          $ref: '#/components/schemas/PageUserInboxNotification'
+    MarkNotificationReadRequest:
+      type: object
+      required: [notificationId]
+      properties:
+        notificationId:
+          type: integer
+          format: int64

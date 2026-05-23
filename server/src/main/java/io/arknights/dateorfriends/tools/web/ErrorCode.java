@@ -18,6 +18,8 @@ public enum ErrorCode {
     BAN_TARGET_WHITELISTED(2010, "封禁目标在白名单中，禁止操作"),
     BAN_PERMISSION_REQUIRED(2011, "无权限执行封禁操作"),
     ALREADY_BANNED(2012, "目标已处于封禁状态"),
+    NOTICE_NOT_FOUND(2013, "公告不存在"),
+    OP_FAILED(2014, "操作失败"),
 
     TOKEN_EXPIRED(3000, "令牌已过期"),
     TOKEN_REVOKED(3001, "令牌已失效"),

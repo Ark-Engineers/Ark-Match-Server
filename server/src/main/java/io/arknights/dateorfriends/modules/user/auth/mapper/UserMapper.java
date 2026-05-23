@@ -494,4 +494,155 @@ public interface UserMapper {
             WHERE id = #{id}
             """)
     int updateLoginSuccessState(@Param("id") long id, @Param("lastLoginAt") LocalDateTime lastLoginAt, @Param("lastLoginIp") String lastLoginIp);
+
+    @Select("""
+            <script>
+            SELECT COUNT(1)
+            FROM `user`
+            WHERE 1=1
+              <if test="includeDeleted != null and includeDeleted == 0">
+                AND deleted = 0
+              </if>
+              <if test="role != null and role != ''">
+                AND role = #{role}
+              </if>
+              <if test="status != null and status != ''">
+                AND status = #{status}
+              </if>
+              <if test="account != null and account != ''">
+                AND account LIKE CONCAT('%', #{account}, '%')
+              </if>
+              <if test="nickname != null and nickname != ''">
+                AND nickname LIKE CONCAT('%', #{nickname}, '%')
+              </if>
+              <if test="createdFrom != null">
+                AND created_at &gt;= #{createdFrom}
+              </if>
+              <if test="createdTo != null">
+                AND created_at &lt;= #{createdTo}
+              </if>
+              <if test="keyword != null and keyword != ''">
+                AND (
+                  account LIKE CONCAT('%', #{keyword}, '%')
+                  OR email LIKE CONCAT('%', #{keyword}, '%')
+                  OR nickname LIKE CONCAT('%', #{keyword}, '%')
+                  OR CAST(id AS CHAR) LIKE CONCAT('%', #{keyword}, '%')
+                )
+              </if>
+            </script>
+            """)
+    long countForAdmin(
+            @Param("account") String account,
+            @Param("nickname") String nickname,
+            @Param("role") String role,
+            @Param("status") String status,
+            @Param("keyword") String keyword,
+            @Param("createdFrom") LocalDateTime createdFrom,
+            @Param("createdTo") LocalDateTime createdTo,
+            @Param("includeDeleted") Integer includeDeleted
+    );
+
+    @Select("""
+            <script>
+            SELECT
+              id,
+              account,
+              email,
+              password_hash AS passwordHash,
+              role,
+              nickname,
+              avatar_url AS avatarUrl,
+              status,
+              email_verified_at AS emailVerifiedAt,
+              last_login_at AS lastLoginAt,
+              last_login_ip AS lastLoginIp,
+              login_fail_count AS loginFailCount,
+              locked_until AS lockedUntil,
+              created_at AS createdAt,
+              updated_at AS updatedAt,
+              deleted,
+              deleted_at AS deletedAt
+            FROM `user`
+            WHERE 1=1
+              <if test="includeDeleted != null and includeDeleted == 0">
+                AND deleted = 0
+              </if>
+              <if test="role != null and role != ''">
+                AND role = #{role}
+              </if>
+              <if test="status != null and status != ''">
+                AND status = #{status}
+              </if>
+              <if test="account != null and account != ''">
+                AND account LIKE CONCAT('%', #{account}, '%')
+              </if>
+              <if test="nickname != null and nickname != ''">
+                AND nickname LIKE CONCAT('%', #{nickname}, '%')
+              </if>
+              <if test="createdFrom != null">
+                AND created_at &gt;= #{createdFrom}
+              </if>
+              <if test="createdTo != null">
+                AND created_at &lt;= #{createdTo}
+              </if>
+              <if test="keyword != null and keyword != ''">
+                AND (
+                  account LIKE CONCAT('%', #{keyword}, '%')
+                  OR email LIKE CONCAT('%', #{keyword}, '%')
+                  OR nickname LIKE CONCAT('%', #{keyword}, '%')
+                  OR CAST(id AS CHAR) LIKE CONCAT('%', #{keyword}, '%')
+                )
+              </if>
+            ORDER BY id DESC
+            LIMIT #{limit} OFFSET #{offset}
+            </script>
+            """)
+    java.util.List<UserDO> selectListForAdmin(
+            @Param("account") String account,
+            @Param("nickname") String nickname,
+            @Param("role") String role,
+            @Param("status") String status,
+            @Param("keyword") String keyword,
+            @Param("createdFrom") LocalDateTime createdFrom,
+            @Param("createdTo") LocalDateTime createdTo,
+            @Param("includeDeleted") Integer includeDeleted,
+            @Param("limit") int limit,
+            @Param("offset") int offset
+    );
+
+    @Update("""
+            <script>
+            UPDATE `user`
+            <set>
+              <if test="account != null">
+                account = #{account},
+              </if>
+              <if test="nickname != null">
+                nickname = #{nickname},
+              </if>
+            </set>
+            WHERE id = #{id}
+            </script>
+            """)
+    int updateProfile(@Param("id") long id, @Param("account") String account, @Param("nickname") String nickname);
+
+    @Update("""
+            UPDATE `user`
+            SET
+              password_hash = #{passwordHash},
+              login_fail_count = 0,
+              locked_until = NULL
+            WHERE id = #{id}
+            """)
+    int updatePasswordHash(@Param("id") long id, @Param("passwordHash") String passwordHash);
+
+    @Update("""
+            UPDATE `user`
+            SET
+              deleted = 1,
+              deleted_at = #{deletedAt}
+            WHERE id = #{id}
+              AND deleted = 0
+            """)
+    int softDelete(@Param("id") long id, @Param("deletedAt") LocalDateTime deletedAt);
 }
