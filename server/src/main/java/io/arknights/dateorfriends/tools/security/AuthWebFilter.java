@@ -32,7 +32,13 @@ public class AuthWebFilter implements WebFilter {
 
     @Override
     public Mono<Void> filter(ServerWebExchange exchange, WebFilterChain chain) {
-        var path = exchange.getRequest().getPath().value();
+        var method = exchange.getRequest().getMethod();
+        if (method != null && "OPTIONS".equalsIgnoreCase(method.name())) {
+            return chain.filter(exchange);
+        }
+
+        var rawPath = exchange.getRequest().getPath().value();
+        var path = normalizePath(rawPath);
         if (isPublicPath(path)) {
             return chain.filter(exchange);
         }
@@ -69,8 +75,31 @@ public class AuthWebFilter implements WebFilter {
     private boolean isPublicPath(String path) {
         return "/auth/login".equals(path)
                 || "/auth/register".equals(path)
+                || "/auth/email/available".equals(path)
+                || "/auth/captcha/new".equals(path)
+                || "/auth/register/email-code/send".equals(path)
+                || "/auth/login/email-code/send".equals(path)
+                || "/auth/login/email-code/verify".equals(path)
+                || "/auth/dev/email-code/test".equals(path)
+                || "/auth/dev/captcha/check".equals(path)
+                || "/auth/dev/redis/info".equals(path)
                 || "/auth/refresh".equals(path)
+                || "/appeal/ban/submit".equals(path)
                 || path.startsWith("/actuator");
+    }
+
+    private String normalizePath(String path) {
+        if (path == null || path.isBlank()) {
+            return "/";
+        }
+        var p = path;
+        while (p.length() > 1 && p.endsWith("/")) {
+            p = p.substring(0, p.length() - 1);
+        }
+        if (p.startsWith("/api/")) {
+            p = p.substring("/api".length());
+        }
+        return p;
     }
 
     private String resolveBearerToken(ServerWebExchange exchange) {

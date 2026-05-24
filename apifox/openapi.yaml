@@ -35,6 +35,8 @@ paths:
                 value:
                   account: admin
                   password: admin
+                  captchaId: 9c1b8a3f1b2d4e6e9f1a2b3c4d5e6f70
+                  captchaText: 2A9K
       responses:
         '200':
           description: 成功
@@ -66,6 +68,14 @@ paths:
           application/json:
             schema:
               $ref: '#/components/schemas/RegisterRequest'
+            examples:
+              user:
+                value:
+                  email: user001@example.com
+                  emailCode: 123456
+                  password: 123456
+                  confirmPassword: 123456
+                  nickname: 小明
       responses:
         '200':
           description: 成功
@@ -79,6 +89,231 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ApiResponseError'
+        '500':
+          description: 服务端错误
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseError'
+  /auth/email/available:
+    get:
+      tags: [Auth]
+      summary: 邮箱是否可用
+      description: 查询邮箱是否可注册（true=可用，false=已存在）
+      security: []
+      parameters:
+        - name: email
+          in: query
+          required: true
+          schema:
+            type: string
+            format: email
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseEmailAvailableResponse'
+        '400':
+          description: 参数不合法
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseError'
+        '500':
+          description: 服务端错误
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseError'
+  /auth/captcha/new:
+    get:
+      tags: [Auth]
+      summary: 获取图形验证码
+      description: 返回 SVG 图形验证码与 captchaId（一次性；校验成功后即失效）
+      security: []
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseCaptchaResponse'
+        '500':
+          description: 服务端错误
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseError'
+  /auth/register/email-code/send:
+    post:
+      tags: [Auth]
+      summary: 发送注册邮箱验证码
+      description: 发送6位数字验证码（有效期5分钟）；同邮箱60秒冷却；IP/邮箱频率限制
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SendRegisterEmailCodeRequest'
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseVoid'
+        '400':
+          description: 参数不合法 / 冷却中 / 频率限制
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseError'
+        '500':
+          description: 服务端错误
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseError'
+  /auth/login/email-code/send:
+    post:
+      tags: [Auth]
+      summary: 发送登录邮箱验证码
+      description: 登录邮箱验证码发送前需先校验图形验证码（有效期5分钟）；同邮箱60秒冷却；IP/邮箱频率限制
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SendLoginEmailCodeRequest'
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseVoid'
+        '400':
+          description: 参数不合法 / 图形验证码错误或过期 / 冷却中 / 频率限制
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseError'
+        '500':
+          description: 服务端错误
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseError'
+  /auth/login/email-code/verify:
+    post:
+      tags: [Auth]
+      summary: 邮箱验证码登录
+      description: 校验邮箱验证码成功后签发 Access/Refresh 双令牌
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EmailCodeLoginRequest'
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseTokenResponse'
+        '400':
+          description: 参数不合法 / 验证码错误或过期 / 错误次数过多
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseError'
+        '500':
+          description: 服务端错误
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseError'
+  /auth/dev/email-code/test:
+    post:
+      tags: [Auth]
+      summary: 测试-签发邮箱验证码
+      description: 仅开发环境（profile=dev）可用；返回明文验证码用于联调测试（同时按正常规则写入 Redis，有效期5分钟、60秒冷却、限流生效）
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TestIssueEmailCodeRequest'
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseTestEmailCodeResponse'
+        '400':
+          description: 参数不合法 / 冷却中 / 频率限制
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseError'
+        '500':
+          description: 服务端错误
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseError'
+  /auth/dev/captcha/check:
+    post:
+      tags: [Auth]
+      summary: 测试-检查图形验证码
+      description: 仅开发环境（profile=dev）可用；用于排查“验证码已过期(2016)”时后端视角下 captchaId 是否存在以及剩余 TTL
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CaptchaCheckRequest'
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseCaptchaCheckResponse'
+        '400':
+          description: 参数不合法
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseError'
+        '500':
+          description: 服务端错误
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseError'
+  /auth/dev/redis/info:
+    get:
+      tags: [Auth]
+      summary: 测试-获取 Redis 连接信息
+      description: 仅开发环境（profile=dev）可用；返回当前后端实例实际使用的 redis host/port/database 与 activeProfiles，用于定位多实例/多DB 导致的“读写不在同一 Redis”
+      security: []
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseRedisInfoResponse'
         '500':
           description: 服务端错误
           content:
@@ -174,6 +409,37 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ApiResponseError'
+  /appeal/ban/submit:
+    post:
+      tags: [User]
+      summary: 提交封禁申诉
+      description: 公共接口（无需登录）；用于被封禁无法登录时提交申诉/咨询
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SubmitBanAppealRequest'
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseSubmitBanAppealResponse'
+        '400':
+          description: 参数不合法
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseError'
+        '500':
+          description: 服务端错误
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseError'
   /user/ping:
     get:
       tags: [User]
@@ -191,6 +457,84 @@ paths:
               examples:
                 ok:
                   value: pong(user)
+        '401':
+          description: 未登录或令牌无效
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseError'
+  /user/profile:
+    get:
+      tags: [User]
+      summary: 获取我的个人信息
+      description: 返回本人个人信息；联系方式字段返回密文（前端用本地私钥解密；解密失败可不显示）
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseUserProfile'
+        '401':
+          description: 未登录或令牌无效
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseError'
+    put:
+      tags: [User]
+      summary: 更新我的个人信息
+      description: 更新本人个人信息；后端使用 publicKeySpki 对 QQ/微信/邮箱进行加密存储
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateUserProfileRequest'
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseUserProfile'
+        '400':
+          description: 参数不合法
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseError'
+        '401':
+          description: 未登录或令牌无效
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseError'
+  /user/profile/{userId}:
+    get:
+      tags: [User]
+      summary: 查看用户个人信息（公开字段）
+      description: 查看他人个人信息；联系方式密文不会返回；生日/年龄受 birthdayVisible 控制
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseUserProfile'
         '401':
           description: 未登录或令牌无效
           content:
@@ -2316,7 +2660,7 @@ components:
   schemas:
     LoginRequest:
       type: object
-      required: [account, password]
+      required: [account, password, captchaId, captchaText]
       properties:
         account:
           type: string
@@ -2326,6 +2670,14 @@ components:
           type: string
           description: 登录密码（明文；后端 BCrypt 验证）
           example: admin
+        captchaId:
+          type: string
+          description: 图形验证码ID（/auth/captcha/new 获取）
+          example: 9c1b8a3f1b2d4e6e9f1a2b3c4d5e6f70
+        captchaText:
+          type: string
+          description: 图形验证码内容
+          example: 2A9K
     RefreshRequest:
       type: object
       required: [refreshToken]
@@ -2344,26 +2696,195 @@ components:
           example: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
     RegisterRequest:
       type: object
-      required: [account, email, password]
+      required: [email, emailCode, password, confirmPassword, nickname]
       properties:
-        account:
-          type: string
-          description: 登录账号（user.account）
-          example: user001
         email:
           type: string
           format: email
           description: 登录邮箱（user.email）
           example: user001@example.com
+        emailCode:
+          type: string
+          description: 邮箱验证码（6位数字）
+          example: '123456'
         password:
           type: string
           description: 登录密码（明文；后端 BCrypt 哈希存储）
           example: 123456
+        confirmPassword:
+          type: string
+          description: 确认密码（必须与 password 一致）
+          example: 123456
         nickname:
           type: string
-          nullable: true
-          description: 昵称（为空则默认使用 account）
+          description: 名称（后端会生成最终昵称：名称#随机4位）
           example: 小明
+    EmailAvailableResponse:
+      type: object
+      required: [available]
+      properties:
+        available:
+          type: boolean
+          description: true=可注册；false=已存在
+          example: true
+    CaptchaResponse:
+      type: object
+      required: [captchaId, svg]
+      properties:
+        captchaId:
+          type: string
+          description: 图形验证码ID（一次性；校验成功后即失效）
+        svg:
+          type: string
+          description: SVG 字符串（前端可直接渲染）
+    SendRegisterEmailCodeRequest:
+      type: object
+      required: [email]
+      properties:
+        email:
+          type: string
+          format: email
+          example: user001@example.com
+    SendLoginEmailCodeRequest:
+      type: object
+      required: [email, captchaId, captchaText]
+      properties:
+        email:
+          type: string
+          format: email
+          example: user001@example.com
+        captchaId:
+          type: string
+          example: 9c1b8a3f1b2d4e6e9f1a2b3c4d5e6f70
+        captchaText:
+          type: string
+          example: 2A9K
+    EmailCodeLoginRequest:
+      type: object
+      required: [email, emailCode]
+      properties:
+        email:
+          type: string
+          format: email
+          example: user001@example.com
+        emailCode:
+          type: string
+          example: '123456'
+    TestIssueEmailCodeRequest:
+      type: object
+      required: [email, purpose]
+      properties:
+        email:
+          type: string
+          format: email
+          example: user001@example.com
+        purpose:
+          type: string
+          description: 用途
+          enum: [register, login]
+          example: register
+    CaptchaCheckRequest:
+      type: object
+      required: [captchaId]
+      properties:
+        captchaId:
+          type: string
+          description: 图形验证码ID（/auth/captcha/new 获取）
+          example: 9c1b8a3f1b2d4e6e9f1a2b3c4d5e6f70
+    CaptchaCheckResponse:
+      type: object
+      required: [exists, ttlSeconds]
+      properties:
+        exists:
+          type: boolean
+          description: 后端视角下 captchaId 是否存在于 Redis
+          example: true
+        ttlSeconds:
+          type: integer
+          format: int64
+          description: 剩余 TTL 秒数（<=0 表示不存在或已过期）
+          example: 290
+    RedisInfoResponse:
+      type: object
+      required: [instanceId, serverPort, host, port, database, activeProfiles, ok, error]
+      properties:
+        instanceId:
+          type: string
+          description: 当前后端实例ID（用于判断是否命中不同实例）
+          example: 0b2c3d4e-1234-5678-9abc-def012345678
+        serverPort:
+          type: integer
+          format: int32
+          description: server.port
+          example: 8888
+        host:
+          type: string
+          description: spring.data.redis.host
+          example: 127.0.0.1
+        port:
+          type: integer
+          format: int32
+          description: spring.data.redis.port
+          example: 6379
+        database:
+          type: integer
+          format: int32
+          description: spring.data.redis.database
+          example: 0
+        activeProfiles:
+          type: string
+          description: 当前实例激活的 profiles（数组字符串）
+          example: "[dev]"
+        ok:
+          type: boolean
+          description: 是否能正常执行一次 Redis 读操作
+          example: true
+        error:
+          type: string
+          description: ok=false 时的简要错误信息
+          example: ""
+    TestEmailCodeResponse:
+      type: object
+      required: [code, expiresInSeconds, cooldownSeconds]
+      properties:
+        code:
+          type: string
+          description: 6位数字验证码（仅开发环境返回）
+          example: '123456'
+        expiresInSeconds:
+          type: integer
+          format: int64
+          example: 300
+        cooldownSeconds:
+          type: integer
+          format: int64
+          example: 60
+    SubmitBanAppealRequest:
+      type: object
+      required: [account, content]
+      properties:
+        account:
+          type: string
+          description: 用户账号（user.account）
+          example: user001
+        contact:
+          type: string
+          nullable: true
+          description: 联系方式（邮箱/手机号/微信/QQ）
+          example: wx:123
+        content:
+          type: string
+          description: 申诉/咨询内容
+          example: 我已知晓规则，申请解封
+    SubmitBanAppealResponse:
+      type: object
+      required: [id]
+      properties:
+        id:
+          type: integer
+          format: int64
+          description: 申诉单号
+          example: 1
     RegisterResponse:
       type: object
       required: [userId, account, email, nickname]
@@ -2472,6 +2993,90 @@ components:
           example: ok
         data:
           $ref: '#/components/schemas/RegisterResponse'
+    ApiResponseEmailAvailableResponse:
+      type: object
+      required: [code, message, data]
+      properties:
+        code:
+          type: integer
+          format: int32
+          description: 0=成功；非0=失败
+          example: 0
+        message:
+          type: string
+          example: ok
+        data:
+          $ref: '#/components/schemas/EmailAvailableResponse'
+    ApiResponseCaptchaResponse:
+      type: object
+      required: [code, message, data]
+      properties:
+        code:
+          type: integer
+          format: int32
+          description: 0=成功；非0=失败
+          example: 0
+        message:
+          type: string
+          example: ok
+        data:
+          $ref: '#/components/schemas/CaptchaResponse'
+    ApiResponseSubmitBanAppealResponse:
+      type: object
+      required: [code, message, data]
+      properties:
+        code:
+          type: integer
+          format: int32
+          description: 0=成功；非0=失败
+          example: 0
+        message:
+          type: string
+          example: ok
+        data:
+          $ref: '#/components/schemas/SubmitBanAppealResponse'
+    ApiResponseTestEmailCodeResponse:
+      type: object
+      required: [code, message, data]
+      properties:
+        code:
+          type: integer
+          format: int32
+          description: 0=成功；非0=失败
+          example: 0
+        message:
+          type: string
+          example: ok
+        data:
+          $ref: '#/components/schemas/TestEmailCodeResponse'
+    ApiResponseCaptchaCheckResponse:
+      type: object
+      required: [code, message, data]
+      properties:
+        code:
+          type: integer
+          format: int32
+          description: 0=成功；非0=失败
+          example: 0
+        message:
+          type: string
+          example: ok
+        data:
+          $ref: '#/components/schemas/CaptchaCheckResponse'
+    ApiResponseRedisInfoResponse:
+      type: object
+      required: [code, message, data]
+      properties:
+        code:
+          type: integer
+          format: int32
+          description: 0=成功；非0=失败
+          example: 0
+        message:
+          type: string
+          example: ok
+        data:
+          $ref: '#/components/schemas/RedisInfoResponse'
     ApiResponseError:
       type: object
       required: [code, message, data]
@@ -2949,6 +3554,108 @@ components:
           example: ok
         data:
           $ref: '#/components/schemas/PageUserBanRecord'
+    UserProfile:
+      type: object
+      required: [userId, account, nickname, tags]
+      properties:
+        userId:
+          type: integer
+          format: int64
+        account:
+          type: string
+        nickname:
+          type: string
+          nullable: true
+        avatarUrl:
+          type: string
+          nullable: true
+        featuredRole:
+          type: string
+          nullable: true
+        signature:
+          type: string
+          nullable: true
+        region:
+          type: string
+          nullable: true
+          description: 仅返回省市（如 福建省厦门市）
+        age:
+          type: integer
+          format: int32
+          nullable: true
+        birthday:
+          type: string
+          format: date
+          nullable: true
+        birthdayVisible:
+          type: boolean
+          nullable: true
+        tags:
+          type: array
+          items:
+            type: string
+        publicKeySpki:
+          type: string
+          nullable: true
+          description: SPKI Base64（前端生成密钥对后上传）
+        qqEnc:
+          type: string
+          nullable: true
+          description: QQ 密文 Base64（RSA-OAEP）
+        wechatEnc:
+          type: string
+          nullable: true
+          description: 微信密文 Base64（RSA-OAEP）
+        emailEnc:
+          type: string
+          nullable: true
+          description: 邮箱密文 Base64（RSA-OAEP）
+    UpdateUserProfileRequest:
+      type: object
+      properties:
+        featuredRole:
+          type: string
+          nullable: true
+        signature:
+          type: string
+          nullable: true
+        birthday:
+          type: string
+          format: date
+          nullable: true
+        birthdayVisible:
+          type: boolean
+          nullable: true
+        tags:
+          type: array
+          maxItems: 3
+          items:
+            type: string
+        publicKeySpki:
+          type: string
+          nullable: true
+        qq:
+          type: string
+          nullable: true
+        wechat:
+          type: string
+          nullable: true
+        email:
+          type: string
+          nullable: true
+    ApiResponseUserProfile:
+      type: object
+      required: [code, message, data]
+      properties:
+        code:
+          type: integer
+          format: int32
+          example: 0
+        message:
+          type: string
+          example: ok
+        data:
+          $ref: '#/components/schemas/UserProfile'
     ApiResponseBoolean:
       type: object
       required: [code, message, data]

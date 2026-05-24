@@ -71,7 +71,41 @@ public class BanService {
 
     public Mono<Void> checkUserAllowed(long userId) {
         return banStore.isUserBanned(userId)
-                .flatMap(banned -> banned ? Mono.error(new BusinessException(ErrorCode.ACCOUNT_BANNED)) : Mono.empty());
+                .flatMap(banned -> {
+                    if (!Boolean.TRUE.equals(banned)) return Mono.empty();
+                    return getUserBanBlockInfo(userId)
+                            .defaultIfEmpty(new BanBlockInfo(null, null, null, null, null))
+                            .flatMap(info -> Mono.error(new BusinessException(ErrorCode.ACCOUNT_BANNED, ErrorCode.ACCOUNT_BANNED.defaultMessage(), info)));
+                });
+    }
+
+    public Mono<BanBlockInfo> getUserBanBlockInfo(long userId) {
+        if (userId <= 0) return Mono.empty();
+        return Mono.fromCallable(() -> {
+                    var list = banRecordMapper.selectListForUser(userId, "ACTIVE", 1, 0);
+                    if (list == null || list.isEmpty()) return null;
+                    return list.get(0);
+                })
+                .subscribeOn(Schedulers.boundedElastic())
+                .flatMap(record -> {
+                    if (record == null) return Mono.empty();
+                    var now = LocalDateTime.now();
+                    Long remainingSeconds = null;
+                    Integer remainingDays = null;
+                    if (record.getExpiresAt() != null) {
+                        var seconds = Duration.between(now, record.getExpiresAt()).getSeconds();
+                        if (seconds < 0) seconds = 0;
+                        remainingSeconds = seconds;
+                        remainingDays = (int) ((seconds + 86399) / 86400);
+                    }
+                    return Mono.just(new BanBlockInfo(
+                            record.getReason(),
+                            record.getEffectiveAt(),
+                            record.getExpiresAt(),
+                            remainingSeconds,
+                            remainingDays
+                    ));
+                });
     }
 
     public Mono<BanRecordDO> banIp(long adminId, String ip, String reason, Long durationSeconds) {

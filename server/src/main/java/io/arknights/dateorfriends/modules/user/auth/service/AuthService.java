@@ -9,7 +9,11 @@ public interface AuthService {
 
     Mono<TokenResponse> login(String account, String password, String ip);
 
+    Mono<TokenResponse> loginByEmailCode(String email, String ip);
+
     Mono<RegisterResponse> register(String account, String email, String password, String nickname, String ip);
+
+    Mono<Boolean> isEmailAvailable(String email);
 
     Mono<TokenResponse> refresh(String refreshToken);
 

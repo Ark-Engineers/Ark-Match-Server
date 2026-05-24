@@ -14,9 +14,11 @@ import io.arknights.dateorfriends.tools.security.SecurityProperties;
 import io.arknights.dateorfriends.tools.security.token.RedisTokenStore;
 import io.arknights.dateorfriends.tools.web.BusinessException;
 import io.arknights.dateorfriends.tools.web.ErrorCode;
+import java.security.SecureRandom;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDateTime;
+import org.springframework.dao.DuplicateKeyException;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.stereotype.Service;
 import reactor.core.publisher.Mono;
@@ -33,6 +35,7 @@ public class AuthServiceImpl implements AuthService {
     private final SecurityProperties securityProperties;
     private final io.arknights.dateorfriends.tools.jwt.JwtProperties jwtProperties;
     private final BanService banService;
+    private final SecureRandom random = new SecureRandom();
 
     public AuthServiceImpl(
             UserMapper userMapper,
@@ -56,10 +59,11 @@ public class AuthServiceImpl implements AuthService {
 
     @Override
     public Mono<TokenResponse> login(String account, String password, String ip) {
-        return findUserByAccount(account)
+        return findUserByAccountOrEmail(account)
                 .switchIfEmpty(Mono.error(new BusinessException(ErrorCode.USER_NOT_FOUND)))
                 .flatMap(user -> banService.checkEmailAllowed(user.getEmail())
                         .then(checkAndHandleLock(user))
+                        .then(checkAccountStatus(user))
                         .then(verifyPassword(user, password))
                         .flatMap(ok -> {
                             if (!ok) {
@@ -70,38 +74,108 @@ public class AuthServiceImpl implements AuthService {
     }
 
     @Override
+    public Mono<TokenResponse> loginByEmailCode(String email, String ip) {
+        return findUserByAccountOrEmail(email)
+                .switchIfEmpty(Mono.error(new BusinessException(ErrorCode.USER_NOT_FOUND)))
+                .flatMap(user -> banService.checkEmailAllowed(user.getEmail())
+                        .then(checkAndHandleLock(user))
+                        .then(checkAccountStatus(user))
+                        .then(handleLoginSuccess(user, ip))
+                        .then(issueTokens(user)));
+    }
+
+    @Override
+    public Mono<Boolean> isEmailAvailable(String email) {
+        return Mono.fromCallable(() -> userMapper.selectByEmail(email) == null)
+                .subscribeOn(Schedulers.boundedElastic());
+    }
+
+    @Override
     public Mono<RegisterResponse> register(String account, String email, String password, String nickname, String ip) {
-        var finalNickname = nickname == null || nickname.isBlank() ? account : nickname;
-        return banService.checkEmailAllowed(email).then(
-                Mono.fromCallable(() -> userMapper.countByAccountAll(account))
-                        .subscribeOn(Schedulers.boundedElastic())
-                        .flatMap(count -> {
-                            if (count > 0) {
-                                return Mono.error(new BusinessException(ErrorCode.ACCOUNT_ALREADY_EXISTS));
+        var baseName = nickname == null ? "" : nickname.trim();
+        if (baseName.isBlank()) {
+            return Mono.error(new BusinessException(ErrorCode.PARAM_INVALID));
+        }
+        return banService.checkEmailAllowed(email)
+                .then(Mono.fromCallable(() -> {
+                            var existed = userMapper.selectByEmailAll(email);
+                            if (existed != null && existed.getDeleted() != null && existed.getDeleted() == 0) {
+                                throw new BusinessException(ErrorCode.EMAIL_ALREADY_EXISTS);
                             }
-                            return Mono.empty();
-                        })
-                        .then(Mono.fromCallable(() -> userMapper.countByEmailAll(email))
-                                .subscribeOn(Schedulers.boundedElastic())
-                                .flatMap(count -> {
-                                    if (count > 0) {
-                                        return Mono.error(new BusinessException(ErrorCode.EMAIL_ALREADY_EXISTS));
-                                    }
-                                    return Mono.empty();
-                                }))
-                        .then(Mono.fromCallable(() -> {
+
                             var passwordHash = passwordEncoder.encode(password);
+                            var finalNickname = buildNickname(baseName);
+
+                            if (existed != null && existed.getDeleted() != null && existed.getDeleted() == 1) {
+                                for (int i = 0; i < 30; i++) {
+                                    var generated = randomAccount();
+                                    if (userMapper.countByAccountAll(generated) > 0) {
+                                        continue;
+                                    }
+                                    userMapper.restoreForReRegister(existed.getId(), generated, passwordHash, finalNickname);
+                                    existed.setAccount(generated);
+                                    existed.setPasswordHash(passwordHash);
+                                    existed.setNickname(finalNickname);
+                                    existed.setDeleted(0);
+                                    existed.setDeletedAt(null);
+                                    existed.setStatus("NORMAL");
+                                    existed.setRole("USER");
+                                    existed.setLoginFailCount(0);
+                                    existed.setLockedUntil(null);
+                                    return existed;
+                                }
+                                throw new BusinessException(ErrorCode.INTERNAL_ERROR, "账号生成失败");
+                            }
+
                             var user = new UserDO();
-                            user.setAccount(account);
                             user.setEmail(email);
                             user.setPasswordHash(passwordHash);
                             user.setNickname(finalNickname);
-                            userMapper.insertUser(user);
-                            return user;
+
+                            for (int i = 0; i < 30; i++) {
+                                var generated = randomAccount();
+                                if (userMapper.countByAccountAll(generated) > 0) {
+                                    continue;
+                                }
+                                user.setAccount(generated);
+                                try {
+                                    userMapper.insertUser(user);
+                                    return user;
+                                } catch (DuplicateKeyException e) {
+                                    continue;
+                                } catch (Exception e) {
+                                    var msg = e.getMessage();
+                                    if (msg != null && (msg.contains("Duplicate") || msg.contains("duplicate") || msg.contains("uk_user_account"))) {
+                                        continue;
+                                    }
+                                    throw e;
+                                }
+                            }
+                            throw new BusinessException(ErrorCode.INTERNAL_ERROR, "账号生成失败");
                         }).subscribeOn(Schedulers.boundedElastic()))
-                        .flatMap(user -> insertActionLog(user.getId(), ip, "/auth/register")
-                                .thenReturn(new RegisterResponse(user.getId(), user.getAccount(), user.getEmail(), user.getNickname())))
-        );
+                .flatMap(user -> insertActionLog(user.getId(), ip, "/auth/register")
+                        .thenReturn(new RegisterResponse(user.getId(), user.getAccount(), user.getEmail(), user.getNickname())));
+    }
+
+    private String randomAccount() {
+        var len = 5 + random.nextInt(6);
+        var sb = new StringBuilder(len);
+        sb.append((char) ('1' + random.nextInt(9)));
+        for (int i = 1; i < len; i++) {
+            sb.append((char) ('0' + random.nextInt(10)));
+        }
+        return sb.toString();
+    }
+
+    private String buildNickname(String baseNameRaw) {
+        var baseName = baseNameRaw == null ? "" : baseNameRaw.trim();
+        if (baseName.isBlank()) baseName = "用户";
+        var suffix = "%04d".formatted(random.nextInt(10_000));
+        var maxBase = 64 - 1 - 4;
+        if (baseName.length() > maxBase) {
+            baseName = baseName.substring(0, maxBase);
+        }
+        return baseName + "#" + suffix;
     }
 
     @Override
@@ -154,8 +228,21 @@ public class AuthServiceImpl implements AuthService {
                 .then();
     }
 
-    private Mono<UserDO> findUserByAccount(String account) {
-        return Mono.fromCallable(() -> userMapper.selectByAccount(account)).subscribeOn(Schedulers.boundedElastic());
+    private Mono<UserDO> findUserByAccountOrEmail(String accountOrEmail) {
+        return Mono.fromCallable(() -> {
+                    if (isEmail(accountOrEmail)) {
+                        return userMapper.selectByEmail(accountOrEmail);
+                    }
+                    return userMapper.selectByAccount(accountOrEmail);
+                })
+                .subscribeOn(Schedulers.boundedElastic());
+    }
+
+    private boolean isEmail(String value) {
+        if (value == null) return false;
+        var s = value.trim();
+        if (s.isBlank()) return false;
+        return s.matches("^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$");
     }
 
     private Mono<UserDO> findUserById(long userId) {
@@ -208,16 +295,26 @@ public class AuthServiceImpl implements AuthService {
     }
 
     private Mono<Void> handleLoginSuccess(UserDO user, String ip) {
-        if ("SUSPENDED".equals(user.getStatus())) {
-            return Mono.error(new BusinessException(ErrorCode.ACCOUNT_SUSPENDED));
-        }
-        if ("BANNED".equals(user.getStatus())) {
-            return Mono.error(new BusinessException(ErrorCode.ACCOUNT_BANNED));
-        }
+        if ("SUSPENDED".equals(user.getStatus())) return Mono.error(new BusinessException(ErrorCode.ACCOUNT_SUSPENDED));
+        if ("BANNED".equals(user.getStatus())) return toBannedError(user.getId());
         var now = LocalDateTime.now();
         return Mono.fromRunnable(() -> userMapper.updateLoginSuccessState(user.getId(), now, ip))
                 .subscribeOn(Schedulers.boundedElastic())
                 .then(insertActionLog(user.getId(), ip, "/auth/login"));
+    }
+
+    private Mono<Void> checkAccountStatus(UserDO user) {
+        if (user == null) return Mono.error(new BusinessException(ErrorCode.USER_NOT_FOUND));
+        if ("SUSPENDED".equals(user.getStatus())) return Mono.error(new BusinessException(ErrorCode.ACCOUNT_SUSPENDED));
+        if ("BANNED".equals(user.getStatus())) return toBannedError(user.getId());
+        return Mono.empty();
+    }
+
+    private Mono<Void> toBannedError(Long userId) {
+        if (userId == null) return Mono.error(new BusinessException(ErrorCode.ACCOUNT_BANNED));
+        return banService.getUserBanBlockInfo(userId)
+                .defaultIfEmpty(new io.arknights.dateorfriends.tools.security.ban.BanBlockInfo(null, null, null, null, null))
+                .flatMap(info -> Mono.error(new BusinessException(ErrorCode.ACCOUNT_BANNED, ErrorCode.ACCOUNT_BANNED.defaultMessage(), info)));
     }
 
     private Mono<TokenResponse> issueTokens(UserDO user) {

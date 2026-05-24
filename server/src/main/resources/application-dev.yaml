@@ -4,14 +4,45 @@ spring:
       # 开发环境 profile
       on-profile: dev
   datasource:
+    # 数据库连接（开发环境）
+    # 强烈建议不要把真实账号/密码提交到仓库：
+    # - 本地开发可直接填明文（仅限本机、不提交）
+    # - 更推荐改为环境变量形式：password: ${DB_PASSWORD:}
     url: ${DB_URL:jdbc:mysql://i.leningcloud.com:3306/ark_match?useUnicode=true&characterEncoding=utf8&useSSL=false&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true}
     username: ark_match
     password: ark123
+
   data:
     redis:
+      # Redis（图形验证码 / 邮箱验证码 / token 黑名单等依赖）
+      # 强烈建议不要把真实密码提交到仓库：
+      # - 本地开发可直接填明文（仅限本机、不提交）
+      # - 更推荐改为环境变量形式：password: ${REDIS_PASSWORD:}
       host: i.leningcloud.com
       port: 6379
       password: shengda
+
+  mail:
+    # 邮件发送（邮箱验证码依赖）
+    # 推荐使用 163 的“客户端授权码”，不要把登录密码写进配置文件
+    # 强烈建议不要把真实账号/授权码提交到仓库：
+    # - 本地开发可直接填明文（仅限本机、不提交）
+    # - 更推荐改为环境变量形式：
+    #   username: ${MAIL_USERNAME:}
+    #   password: ${MAIL_PASSWORD:}
+    host: smtp.163.com
+    port: 465
+    username: z3056361350@163.com
+    password: HUiWrHVXw4xuEkAP
+    properties:
+      mail:
+        smtp:
+          auth: true
+          starttls:
+            enable: true
+            required: true
+          ssl:
+            enable: true
 
 server:
   # 开发环境默认端口（本地启动用）

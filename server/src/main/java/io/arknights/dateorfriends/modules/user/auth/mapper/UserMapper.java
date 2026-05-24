@@ -109,6 +109,31 @@ public interface UserMapper {
               deleted,
               deleted_at AS deletedAt
             FROM `user`
+            WHERE email = #{email}
+            LIMIT 1
+            """)
+    UserDO selectByEmailAll(@Param("email") String email);
+
+    @Select("""
+            SELECT
+              id,
+              account,
+              email,
+              password_hash AS passwordHash,
+              role,
+              nickname,
+              avatar_url AS avatarUrl,
+              status,
+              email_verified_at AS emailVerifiedAt,
+              last_login_at AS lastLoginAt,
+              last_login_ip AS lastLoginIp,
+              login_fail_count AS loginFailCount,
+              locked_until AS lockedUntil,
+              created_at AS createdAt,
+              updated_at AS updatedAt,
+              deleted,
+              deleted_at AS deletedAt
+            FROM `user`
             WHERE last_login_ip = #{ip}
               AND deleted = 0
             ORDER BY id DESC
@@ -635,6 +660,28 @@ public interface UserMapper {
             WHERE id = #{id}
             """)
     int updatePasswordHash(@Param("id") long id, @Param("passwordHash") String passwordHash);
+
+    @Update("""
+            UPDATE `user`
+            SET
+              account = #{account},
+              password_hash = #{passwordHash},
+              role = 'USER',
+              nickname = #{nickname},
+              status = 'NORMAL',
+              email_verified_at = NOW(),
+              login_fail_count = 0,
+              locked_until = NULL,
+              deleted = 0,
+              deleted_at = NULL
+            WHERE id = #{id}
+            """)
+    int restoreForReRegister(
+            @Param("id") long id,
+            @Param("account") String account,
+            @Param("passwordHash") String passwordHash,
+            @Param("nickname") String nickname
+    );
 
     @Update("""
             UPDATE `user`
