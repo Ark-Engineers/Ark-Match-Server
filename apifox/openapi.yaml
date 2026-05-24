@@ -467,7 +467,7 @@ paths:
     get:
       tags: [User]
       summary: 获取我的个人信息
-      description: 返回本人个人信息；联系方式字段返回密文（前端用本地私钥解密；解密失败可不显示）
+      description: 返回本人个人信息；QQ/微信/邮箱仅本人接口返回明文（后端加密存储，响应时解密返回）
       security:
         - bearerAuth: []
       responses:
@@ -486,7 +486,7 @@ paths:
     put:
       tags: [User]
       summary: 更新我的个人信息
-      description: 更新本人个人信息；后端使用 publicKeySpki 对 QQ/微信/邮箱进行加密存储
+      description: 更新本人个人信息；QQ/微信/邮箱以明文提交，后端加密存储
       security:
         - bearerAuth: []
       requestBody:
@@ -3594,22 +3594,18 @@ components:
           type: array
           items:
             type: string
-        publicKeySpki:
+        qq:
           type: string
           nullable: true
-          description: SPKI Base64（前端生成密钥对后上传）
-        qqEnc:
+          description: 仅本人接口返回（明文）；查看他人资料不返回/为 null
+        wechat:
           type: string
           nullable: true
-          description: QQ 密文 Base64（RSA-OAEP）
-        wechatEnc:
+          description: 仅本人接口返回（明文）；查看他人资料不返回/为 null
+        email:
           type: string
           nullable: true
-          description: 微信密文 Base64（RSA-OAEP）
-        emailEnc:
-          type: string
-          nullable: true
-          description: 邮箱密文 Base64（RSA-OAEP）
+          description: 仅本人接口返回（明文）；查看他人资料不返回/为 null
     UpdateUserProfileRequest:
       type: object
       properties:
@@ -3631,18 +3627,18 @@ components:
           maxItems: 3
           items:
             type: string
-        publicKeySpki:
-          type: string
-          nullable: true
         qq:
           type: string
           nullable: true
+          description: 明文提交；后端加密存储
         wechat:
           type: string
           nullable: true
+          description: 明文提交；后端加密存储
         email:
           type: string
           nullable: true
+          description: 明文提交；后端加密存储
     ApiResponseUserProfile:
       type: object
       required: [code, message, data]
