@@ -2470,6 +2470,221 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ApiResponseError'
+  /admin/questionnaire/list:
+    get:
+      tags: [Admin]
+      summary: 问卷管理-列表
+      description: 管理端分页查询问卷（ADMIN/SUPER_ADMIN）
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: page
+          in: query
+          required: false
+          schema:
+            type: integer
+            format: int32
+            default: 1
+        - name: size
+          in: query
+          required: false
+          schema:
+            type: integer
+            format: int32
+            default: 20
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponsePageQuestionnaire'
+        '401':
+          description: 未登录或令牌无效
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseError'
+  /admin/questionnaire/template:
+    get:
+      tags: [Admin]
+      summary: 问卷管理-导出模板
+      description: 导出标准Excel模板（表头含批注）
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Excel 文件
+          content:
+            application/vnd.openxmlformats-officedocument.spreadsheetml.sheet:
+              schema:
+                type: string
+                format: binary
+        '401':
+          description: 未登录或令牌无效
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseError'
+  /admin/questionnaire/import:
+    post:
+      tags: [Admin]
+      summary: 问卷管理-导入Excel
+      description: 上传Excel并全量校验，校验通过后生成新问卷并写入题目配置
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [title, file]
+              properties:
+                title:
+                  type: string
+                subtitle:
+                  type: string
+                file:
+                  type: string
+                  format: binary
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseQuestionnaireDetail'
+        '400':
+          description: 参数不合法/模板校验失败
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseError'
+        '401':
+          description: 未登录或令牌无效
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseError'
+  /admin/questionnaire/update:
+    post:
+      tags: [Admin]
+      summary: 问卷管理-更新
+      description: 更新问卷元信息与题目配置（全量覆盖）
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateQuestionnaireRequest'
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseQuestionnaireDetail'
+        '400':
+          description: 参数不合法/校验失败
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseError'
+        '401':
+          description: 未登录或令牌无效
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseError'
+  /admin/questionnaire/delete:
+    post:
+      tags: [Admin]
+      summary: 问卷管理-删除
+      description: 删除问卷（软删问卷主表并删除题目配置）
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/QuestionnaireIdRequest'
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseVoid'
+        '400':
+          description: 参数不合法
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseError'
+        '401':
+          description: 未登录或令牌无效
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseError'
+  /admin/questionnaire/{id}:
+    get:
+      tags: [Admin]
+      summary: 问卷管理-详情
+      description: 获取问卷元信息与题目配置
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseQuestionnaireDetail'
+        '401':
+          description: 未登录或令牌无效
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseError'
+  /admin/questionnaire/{id}/preview:
+    get:
+      tags: [Admin]
+      summary: 问卷管理-预览数据
+      description: 返回结构化预览数据（包含子问题触发配置、题型限制、选项等）
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseQuestionnairePreview'
+        '401':
+          description: 未登录或令牌无效
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseError'
   /user/notices:
     get:
       tags: [User]
@@ -3873,6 +4088,202 @@ components:
         id:
           type: integer
           format: int64
+    QuestionnaireIdRequest:
+      type: object
+      required: [id]
+      properties:
+        id:
+          type: integer
+          format: int64
+    QuestionnaireListItem:
+      type: object
+      required: [id, title, status, createdBy, updatedBy, createdAt, updatedAt]
+      properties:
+        id:
+          type: integer
+          format: int64
+        title:
+          type: string
+        subtitle:
+          type: string
+          nullable: true
+        status:
+          type: string
+          enum: [DRAFT, READY]
+        createdBy:
+          type: integer
+          format: int64
+        updatedBy:
+          type: integer
+          format: int64
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+    QuestionnaireQuestionItem:
+      type: object
+      required: [seq, question, type, weight]
+      properties:
+        seq:
+          type: integer
+          format: int32
+        question:
+          type: string
+        type:
+          type: string
+          description: 单选/填空/判断/多选_X（X>=2）
+        options:
+          type: string
+          nullable: true
+          description: 单选/多选选项，英文|分隔
+        parentSeq:
+          type: integer
+          format: int32
+          nullable: true
+        triggerOption:
+          type: string
+          nullable: true
+        weight:
+          type: string
+          description: 最多2位小数
+    QuestionnaireDetail:
+      type: object
+      required: [id, title, status, questions]
+      properties:
+        id:
+          type: integer
+          format: int64
+        title:
+          type: string
+        subtitle:
+          type: string
+          nullable: true
+        status:
+          type: string
+          enum: [DRAFT, READY]
+        questions:
+          type: array
+          items:
+            $ref: '#/components/schemas/QuestionnaireQuestionItem'
+    UpdateQuestionnaireRequest:
+      type: object
+      required: [id, title, questions]
+      properties:
+        id:
+          type: integer
+          format: int64
+        title:
+          type: string
+        subtitle:
+          type: string
+          nullable: true
+        questions:
+          type: array
+          items:
+            $ref: '#/components/schemas/QuestionnaireQuestionItem'
+    QuestionnairePreviewQuestion:
+      type: object
+      required: [seq, question, type, options, weight]
+      properties:
+        seq:
+          type: integer
+          format: int32
+        question:
+          type: string
+        type:
+          type: string
+          enum: [单选, 多选, 填空, 判断]
+        multiMax:
+          type: integer
+          format: int32
+          nullable: true
+        options:
+          type: array
+          items:
+            type: string
+        parentSeq:
+          type: integer
+          format: int32
+          nullable: true
+        triggerOption:
+          type: string
+          nullable: true
+        weight:
+          type: string
+    QuestionnairePreview:
+      type: object
+      required: [id, title, questions]
+      properties:
+        id:
+          type: integer
+          format: int64
+        title:
+          type: string
+        subtitle:
+          type: string
+          nullable: true
+        questions:
+          type: array
+          items:
+            $ref: '#/components/schemas/QuestionnairePreviewQuestion'
+    PageQuestionnaire:
+      type: object
+      required: [total, page, size, items]
+      properties:
+        total:
+          type: integer
+          format: int64
+        page:
+          type: integer
+          format: int32
+        size:
+          type: integer
+          format: int32
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/QuestionnaireListItem'
+    ApiResponsePageQuestionnaire:
+      type: object
+      required: [code, message, data]
+      properties:
+        code:
+          type: integer
+          format: int32
+          example: 0
+        message:
+          type: string
+          example: ok
+        data:
+          $ref: '#/components/schemas/PageQuestionnaire'
+    ApiResponseQuestionnaireDetail:
+      type: object
+      required: [code, message, data]
+      properties:
+        code:
+          type: integer
+          format: int32
+          example: 0
+        message:
+          type: string
+          example: ok
+        data:
+          $ref: '#/components/schemas/QuestionnaireDetail'
+    ApiResponseQuestionnairePreview:
+      type: object
+      required: [code, message, data]
+      properties:
+        code:
+          type: integer
+          format: int32
+          example: 0
+        message:
+          type: string
+          example: ok
+        data:
+          $ref: '#/components/schemas/QuestionnairePreview'
     NoticeLog:
       type: object
       required: [id, noticeId, actionType, createdAt]
