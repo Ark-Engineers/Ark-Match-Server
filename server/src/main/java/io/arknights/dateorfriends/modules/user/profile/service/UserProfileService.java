@@ -39,6 +39,8 @@ public class UserProfileService {
             String account,
             String nickname,
             String avatarUrl,
+            String avatarCharId,
+            String avatarCharName,
             String featuredRole,
             String signature,
             String region,
@@ -97,6 +99,29 @@ public class UserProfileService {
                         profile.setTagsJson(toTagsJson(tags));
                     }
 
+                    var hasAvatarUpdate = req.avatarCharId() != null || req.avatarCharName() != null;
+                    if (hasAvatarUpdate) {
+                        var avatarCharId = trimToNull(req.avatarCharId());
+                        if (avatarCharId == null) {
+                            userMapper.updateAvatar(userId, null, null, null);
+                            user.setAvatarUrl(null);
+                            user.setAvatarCharId(null);
+                            user.setAvatarCharName(null);
+                        } else {
+                            if (!avatarCharId.matches("^char_[0-9a-zA-Z_]+$")) {
+                                throw new BusinessException(ErrorCode.PARAM_INVALID, "头像角色ID不正确");
+                            }
+                            var avatarCharName = trimToNull(req.avatarCharName());
+                            if (avatarCharName == null) throw new BusinessException(ErrorCode.PARAM_INVALID, "头像角色名称不能为空");
+                            if (avatarCharName.length() > 64) throw new BusinessException(ErrorCode.PARAM_INVALID, "头像角色名称过长");
+                            var avatarUrl = buildAvatarUrl(avatarCharId);
+                            userMapper.updateAvatar(userId, avatarUrl, avatarCharId, avatarCharName);
+                            user.setAvatarUrl(avatarUrl);
+                            user.setAvatarCharId(avatarCharId);
+                            user.setAvatarCharName(avatarCharName);
+                        }
+                    }
+
                     var hasContactUpdate = req.qq() != null || req.wechat() != null || req.email() != null;
                     if (hasContactUpdate) {
                         if (req.qq() != null) profile.setQqEnc(encryptContact(req.qq()));
@@ -138,6 +163,8 @@ public class UserProfileService {
                 user.getAccount(),
                 user.getNickname(),
                 user.getAvatarUrl(),
+                user.getAvatarCharId(),
+                user.getAvatarCharName(),
                 featuredRole,
                 signature,
                 region,
@@ -198,6 +225,10 @@ public class UserProfileService {
         }
         sb.append(']');
         return sb.toString();
+    }
+
+    private String buildAvatarUrl(String id) {
+        return "https://web.hycdn.cn/arknights/game/assets/char/avatar/" + id + ".png";
     }
 
     private List<String> parseTags(String json) {

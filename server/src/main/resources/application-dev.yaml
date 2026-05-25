@@ -62,7 +62,7 @@ app:
   jwt:
     secret: ${JWT_SECRET:dev-jwt-secret-change-me}
     issuer: ${JWT_ISSUER:dateOrFriends}
-    access-ttl-seconds: 7200
+    access-ttl-seconds: 86400
     refresh-ttl-seconds: 1296000
   security:
     login-fail-lock-threshold: 5

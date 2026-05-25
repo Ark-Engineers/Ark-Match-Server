@@ -20,6 +20,8 @@ public interface UserMapper {
               role,
               nickname,
               avatar_url AS avatarUrl,
+              avatar_char_id AS avatarCharId,
+              avatar_char_name AS avatarCharName,
               status,
               email_verified_at AS emailVerifiedAt,
               last_login_at AS lastLoginAt,
@@ -46,6 +48,8 @@ public interface UserMapper {
               role,
               nickname,
               avatar_url AS avatarUrl,
+              avatar_char_id AS avatarCharId,
+              avatar_char_name AS avatarCharName,
               status,
               email_verified_at AS emailVerifiedAt,
               last_login_at AS lastLoginAt,
@@ -72,6 +76,8 @@ public interface UserMapper {
               role,
               nickname,
               avatar_url AS avatarUrl,
+              avatar_char_id AS avatarCharId,
+              avatar_char_name AS avatarCharName,
               status,
               email_verified_at AS emailVerifiedAt,
               last_login_at AS lastLoginAt,
@@ -98,6 +104,8 @@ public interface UserMapper {
               role,
               nickname,
               avatar_url AS avatarUrl,
+              avatar_char_id AS avatarCharId,
+              avatar_char_name AS avatarCharName,
               status,
               email_verified_at AS emailVerifiedAt,
               last_login_at AS lastLoginAt,
@@ -123,6 +131,8 @@ public interface UserMapper {
               role,
               nickname,
               avatar_url AS avatarUrl,
+              avatar_char_id AS avatarCharId,
+              avatar_char_name AS avatarCharName,
               status,
               email_verified_at AS emailVerifiedAt,
               last_login_at AS lastLoginAt,
@@ -151,6 +161,8 @@ public interface UserMapper {
               role,
               nickname,
               avatar_url AS avatarUrl,
+              avatar_char_id AS avatarCharId,
+              avatar_char_name AS avatarCharName,
               status,
               email_verified_at AS emailVerifiedAt,
               last_login_at AS lastLoginAt,
@@ -180,6 +192,8 @@ public interface UserMapper {
               role,
               nickname,
               avatar_url AS avatarUrl,
+              avatar_char_id AS avatarCharId,
+              avatar_char_name AS avatarCharName,
               status,
               email_verified_at AS emailVerifiedAt,
               last_login_at AS lastLoginAt,
@@ -207,6 +221,8 @@ public interface UserMapper {
               role,
               nickname,
               avatar_url AS avatarUrl,
+              avatar_char_id AS avatarCharId,
+              avatar_char_name AS avatarCharName,
               status,
               email_verified_at AS emailVerifiedAt,
               last_login_at AS lastLoginAt,
@@ -234,6 +250,8 @@ public interface UserMapper {
               role,
               nickname,
               avatar_url AS avatarUrl,
+              avatar_char_id AS avatarCharId,
+              avatar_char_name AS avatarCharName,
               status,
               email_verified_at AS emailVerifiedAt,
               last_login_at AS lastLoginAt,
@@ -261,6 +279,8 @@ public interface UserMapper {
               role,
               nickname,
               avatar_url AS avatarUrl,
+              avatar_char_id AS avatarCharId,
+              avatar_char_name AS avatarCharName,
               status,
               email_verified_at AS emailVerifiedAt,
               last_login_at AS lastLoginAt,
@@ -289,6 +309,8 @@ public interface UserMapper {
               role,
               nickname,
               avatar_url AS avatarUrl,
+              avatar_char_id AS avatarCharId,
+              avatar_char_name AS avatarCharName,
               status,
               email_verified_at AS emailVerifiedAt,
               last_login_at AS lastLoginAt,
@@ -577,6 +599,8 @@ public interface UserMapper {
               role,
               nickname,
               avatar_url AS avatarUrl,
+              avatar_char_id AS avatarCharId,
+              avatar_char_name AS avatarCharName,
               status,
               email_verified_at AS emailVerifiedAt,
               last_login_at AS lastLoginAt,
@@ -650,6 +674,22 @@ public interface UserMapper {
             </script>
             """)
     int updateProfile(@Param("id") long id, @Param("account") String account, @Param("nickname") String nickname);
+
+    @Update("""
+            UPDATE `user`
+            SET
+              avatar_url = #{avatarUrl},
+              avatar_char_id = #{avatarCharId},
+              avatar_char_name = #{avatarCharName}
+            WHERE id = #{id}
+              AND deleted = 0
+            """)
+    int updateAvatar(
+            @Param("id") long id,
+            @Param("avatarUrl") String avatarUrl,
+            @Param("avatarCharId") String avatarCharId,
+            @Param("avatarCharName") String avatarCharName
+    );
 
     @Update("""
             UPDATE `user`

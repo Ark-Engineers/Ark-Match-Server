@@ -13,6 +13,8 @@ public class UserDO {
     private String role;
     private String nickname;
     private String avatarUrl;
+    private String avatarCharId;
+    private String avatarCharName;
     private String status;
     private LocalDateTime emailVerifiedAt;
     private LocalDateTime lastLoginAt;

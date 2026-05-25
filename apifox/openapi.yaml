@@ -541,6 +541,26 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ApiResponseError'
+  /user/profile/avatar-options:
+    get:
+      tags: [User]
+      summary: 获取头像可选列表
+      description: 拉取并返回全部明日方舟角色头像选项（按稀有度排序）
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseAvatarOptionList'
+        '401':
+          description: 未登录或令牌无效
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseError'
   /user/ban/records:
     get:
       tags: [User]
@@ -3569,6 +3589,12 @@ components:
         avatarUrl:
           type: string
           nullable: true
+        avatarCharId:
+          type: string
+          nullable: true
+        avatarCharName:
+          type: string
+          nullable: true
         featuredRole:
           type: string
           nullable: true
@@ -3627,6 +3653,12 @@ components:
           maxItems: 3
           items:
             type: string
+        avatarCharId:
+          type: string
+          nullable: true
+        avatarCharName:
+          type: string
+          nullable: true
         qq:
           type: string
           nullable: true
@@ -3639,6 +3671,35 @@ components:
           type: string
           nullable: true
           description: 明文提交；后端加密存储
+    AvatarOption:
+      type: object
+      required: [id, name, avatarUrl]
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        rarity:
+          type: integer
+          format: int32
+          nullable: true
+        avatarUrl:
+          type: string
+    ApiResponseAvatarOptionList:
+      type: object
+      required: [code, message, data]
+      properties:
+        code:
+          type: integer
+          format: int32
+          example: 0
+        message:
+          type: string
+          example: ok
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/AvatarOption'
     ApiResponseUserProfile:
       type: object
       required: [code, message, data]
