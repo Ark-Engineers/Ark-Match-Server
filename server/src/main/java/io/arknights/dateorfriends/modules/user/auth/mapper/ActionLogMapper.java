@@ -15,12 +15,14 @@ public interface ActionLogMapper {
     int insert(@Param("userId") long userId, @Param("ip") String ip, @Param("api") String api);
 
     @Select("""
-            SELECT DISTINCT ip
+            SELECT ip
             FROM `action_log`
             WHERE user_id = #{userId}
               AND ip IS NOT NULL
               AND ip <> ''
-            ORDER BY ip ASC
+              AND LOWER(ip) <> 'unknown'
+            GROUP BY ip
+            ORDER BY MAX(created_at) DESC, MAX(id) DESC
             """)
     java.util.List<String> selectDistinctIpsByUserId(@Param("userId") long userId);
 

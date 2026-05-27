@@ -1,11 +1,13 @@
 package io.arknights.dateorfriends.modules.user.profile.service;
 
 import io.arknights.dateorfriends.modules.user.auth.mapper.UserMapper;
+import io.arknights.dateorfriends.modules.user.auth.mapper.ActionLogMapper;
 import io.arknights.dateorfriends.modules.user.profile.controller.UserProfileController.UpdateProfileRequest;
 import io.arknights.dateorfriends.modules.user.profile.mapper.UserProfileDO;
 import io.arknights.dateorfriends.modules.user.profile.mapper.UserProfileMapper;
 import io.arknights.dateorfriends.tools.web.BusinessException;
 import io.arknights.dateorfriends.tools.web.ErrorCode;
+import io.arknights.dateorfriends.tools.web.IpUtils;
 import java.time.LocalDate;
 import java.time.Period;
 import java.util.ArrayList;
@@ -18,17 +20,20 @@ import reactor.core.scheduler.Schedulers;
 public class UserProfileService {
 
     private final UserMapper userMapper;
+    private final ActionLogMapper actionLogMapper;
     private final UserProfileMapper userProfileMapper;
     private final GeoIpService geoIpService;
     private final ContactAesService contactAesService;
 
     public UserProfileService(
             UserMapper userMapper,
+            ActionLogMapper actionLogMapper,
             UserProfileMapper userProfileMapper,
             GeoIpService geoIpService,
             ContactAesService contactAesService
     ) {
         this.userMapper = userMapper;
+        this.actionLogMapper = actionLogMapper;
         this.userProfileMapper = userProfileMapper;
         this.geoIpService = geoIpService;
         this.contactAesService = contactAesService;
@@ -61,15 +66,18 @@ public class UserProfileService {
                         throw new BusinessException(ErrorCode.USER_NOT_FOUND);
                     }
                     var profile = userProfileMapper.selectByUserId(targetUserId);
-                    return new Object[]{user, profile};
+                    var recentIps = actionLogMapper.selectDistinctIpsByUserId(targetUserId);
+                    var regionIp = profile == null ? null : profile.getRegionIp();
+                    var ipForGeo = chooseIpForGeo(regionIp, user.getLastLoginIp(), recentIps);
+                    return new Object[]{user, profile, ipForGeo};
                 })
                 .subscribeOn(Schedulers.boundedElastic())
                 .flatMap(arr -> {
                     var user = (io.arknights.dateorfriends.modules.user.auth.mapper.UserDO) arr[0];
                     var profile = (UserProfileDO) arr[1];
+                    var ipForGeo = (String) arr[2];
                     var isOwner = viewerUserId == targetUserId;
-                    var regionIp = profile == null ? null : profile.getRegionIp();
-                    return geoIpService.resolveProvinceCityByIp(regionIp)
+                    return geoIpService.resolveProvinceCityByIp(ipForGeo)
                             .map(region -> toResponse(user, profile, region, isOwner));
                 });
     }
@@ -83,7 +91,9 @@ public class UserProfileService {
                     var existed = userProfileMapper.selectByUserId(userId);
                     var profile = existed == null ? new UserProfileDO() : existed;
                     profile.setUserId(userId);
-                    profile.setRegionIp(ip);
+                    if (IpUtils.isPublicIp(ip)) {
+                        profile.setRegionIp(ip);
+                    }
 
                     if (req.featuredRole() != null) profile.setFeaturedRole(trimToNull(req.featuredRole()));
 
@@ -130,7 +140,9 @@ public class UserProfileService {
                     }
 
                     userProfileMapper.upsert(profile);
-                    var region = geoIpService.resolveProvinceCityByIp(profile.getRegionIp()).block();
+                    var recentIps = actionLogMapper.selectDistinctIpsByUserId(userId);
+                    var ipForGeo = chooseIpForGeo(profile.getRegionIp(), user.getLastLoginIp(), recentIps);
+                    var region = geoIpService.resolveProvinceCityByIp(ipForGeo).block();
                     if (region == null || region.isBlank()) region = "未知";
                     return toResponse(user, profile, region, true);
                 })
@@ -183,6 +195,17 @@ public class UserProfileService {
         var now = LocalDate.now();
         if (birthday.isAfter(now)) return null;
         return Period.between(birthday, now).getYears();
+    }
+
+    private String chooseIpForGeo(String regionIp, String lastLoginIp, List<String> recentIps) {
+        if (IpUtils.isPublicIp(lastLoginIp)) return lastLoginIp;
+        if (IpUtils.isPublicIp(regionIp)) return regionIp;
+        if (recentIps != null) {
+            for (var ip : recentIps) {
+                if (IpUtils.isPublicIp(ip)) return ip;
+            }
+        }
+        return null;
     }
 
     private String trimToNull(String v) {

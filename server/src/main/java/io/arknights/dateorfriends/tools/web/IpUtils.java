@@ -35,23 +35,29 @@ public final class IpUtils {
     private static String firstIpFromXff(String xff) {
         if (xff == null || xff.isBlank()) return null;
         var parts = xff.split(",");
+        String firstValid = null;
         for (var raw : parts) {
             var ip = normalizeIp(raw);
-            if (ip != null) return ip;
+            if (ip == null) continue;
+            if (firstValid == null) firstValid = ip;
+            if (isPublicIp(ip)) return ip;
         }
-        return null;
+        return firstValid;
     }
 
     private static String firstIpFromForwarded(String forwarded) {
         if (forwarded == null || forwarded.isBlank()) return null;
         var parts = forwarded.split(";");
+        String firstValid = null;
         for (var part : parts) {
             var trimmed = part.trim();
             if (!trimmed.regionMatches(true, 0, "for=", 0, "for=".length())) continue;
             var ip = normalizeIp(trimmed.substring("for=".length()));
-            if (ip != null) return ip;
+            if (ip == null) continue;
+            if (firstValid == null) firstValid = ip;
+            if (isPublicIp(ip)) return ip;
         }
-        return null;
+        return firstValid;
     }
 
     private static String normalizeIp(String raw) {
@@ -72,5 +78,37 @@ public final class IpUtils {
             if (!host.isBlank() && port.matches("\\d{1,5}")) return host;
         }
         return ip.isBlank() ? null : ip;
+    }
+
+    public static boolean isPublicIp(String ip) {
+        if (ip == null) return false;
+        var s = ip.trim();
+        if (s.isBlank() || "unknown".equalsIgnoreCase(s)) return false;
+
+        if (s.contains(":")) {
+            var lower = s.toLowerCase();
+            if ("::1".equals(lower)) return false;
+            if (lower.startsWith("fe80:")) return false;
+            if (lower.startsWith("fc") || lower.startsWith("fd")) return false;
+            return true;
+        }
+
+        var parts = s.split("\\.");
+        if (parts.length != 4) return false;
+        int a;
+        int b;
+        try {
+            a = Integer.parseInt(parts[0]);
+            b = Integer.parseInt(parts[1]);
+        } catch (Exception e) {
+            return false;
+        }
+        if (a == 10) return false;
+        if (a == 127) return false;
+        if (a == 0) return false;
+        if (a == 169 && b == 254) return false;
+        if (a == 192 && b == 168) return false;
+        if (a == 172 && b >= 16 && b <= 31) return false;
+        return true;
     }
 }

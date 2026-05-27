@@ -7,6 +7,7 @@ import org.springframework.data.redis.core.ReactiveStringRedisTemplate;
 import org.springframework.stereotype.Component;
 import org.springframework.web.reactive.function.client.WebClient;
 import reactor.core.publisher.Mono;
+import io.arknights.dateorfriends.tools.web.IpUtils;
 
 @Component
 public class GeoIpService {
@@ -29,12 +30,14 @@ public class GeoIpService {
     public Mono<String> resolveProvinceCityByIp(String ipRaw) {
         var ip = ipRaw == null ? "" : ipRaw.trim();
         if (ip.isBlank()) return Mono.just("未知");
+        if ("unknown".equalsIgnoreCase(ip)) return Mono.just("未知");
+        if (!IpUtils.isPublicIp(ip)) return Mono.just("未知");
         if (amapKey.isBlank()) return Mono.just("未知");
 
         var key = KEY_PREFIX + ip;
         return redis.opsForValue()
                 .get(key)
-                .filter(v -> v != null && !v.isBlank())
+                .filter(v -> v != null && !v.isBlank() && !"未知".equals(v))
                 .switchIfEmpty(Mono.defer(() -> fetchAndCache(ip, key)));
     }
 
@@ -51,16 +54,26 @@ public class GeoIpService {
                 .bodyToMono(Map.class)
                 .map(this::formatProvinceCity)
                 .onErrorReturn("未知")
-                .flatMap(city -> redis.opsForValue().set(cacheKey, city, Duration.ofDays(7)).thenReturn(city));
+                .flatMap(city -> {
+                    if (city == null || city.isBlank() || "未知".equals(city)) {
+                        return Mono.just("未知");
+                    }
+                    return redis.opsForValue().set(cacheKey, city, Duration.ofDays(7)).thenReturn(city);
+                });
     }
 
     private String formatProvinceCity(Map data) {
         if (data == null) return "未知";
+        var status = valueOf(data.get("status"));
+        if (!status.isBlank() && !"1".equals(status)) return "未知";
         var province = valueOf(data.get("province"));
         var city = valueOf(data.get("city"));
+        if ("[]".equals(province)) province = "";
         if ("[]".equals(city)) city = "";
         if (province.isBlank() && city.isBlank()) return "未知";
+        if (province.isBlank()) return city;
         if (city.isBlank()) return province;
+        if (province.equals(city)) return province;
         return province + city;
     }
 
@@ -70,4 +83,3 @@ public class GeoIpService {
         return s;
     }
 }
-

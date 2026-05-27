@@ -12,6 +12,7 @@ import io.arknights.dateorfriends.tools.security.ban.BanService;
 import io.arknights.dateorfriends.tools.security.Role;
 import io.arknights.dateorfriends.tools.security.SecurityProperties;
 import io.arknights.dateorfriends.tools.security.token.RedisTokenStore;
+import io.arknights.dateorfriends.tools.web.IpUtils;
 import io.arknights.dateorfriends.tools.web.BusinessException;
 import io.arknights.dateorfriends.tools.web.ErrorCode;
 import java.security.SecureRandom;
@@ -298,7 +299,15 @@ public class AuthServiceImpl implements AuthService {
         if ("SUSPENDED".equals(user.getStatus())) return Mono.error(new BusinessException(ErrorCode.ACCOUNT_SUSPENDED));
         if ("BANNED".equals(user.getStatus())) return toBannedError(user.getId());
         var now = LocalDateTime.now();
-        return Mono.fromRunnable(() -> userMapper.updateLoginSuccessState(user.getId(), now, ip))
+        var existed = user.getLastLoginIp();
+        String normalized = ip == null ? null : ip.trim();
+        boolean shouldUpdateIp = normalized != null
+                && !normalized.isBlank()
+                && !"unknown".equalsIgnoreCase(normalized)
+                && (existed == null || existed.isBlank() || !existed.equals(normalized))
+                && (IpUtils.isPublicIp(normalized) || existed == null || existed.isBlank() || !IpUtils.isPublicIp(existed));
+        String ipToSave = shouldUpdateIp ? normalized : existed;
+        return Mono.fromRunnable(() -> userMapper.updateLoginSuccessState(user.getId(), now, ipToSave))
                 .subscribeOn(Schedulers.boundedElastic())
                 .then(insertActionLog(user.getId(), ip, "/auth/login"));
     }
