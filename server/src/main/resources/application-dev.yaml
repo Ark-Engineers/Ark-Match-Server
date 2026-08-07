@@ -46,7 +46,7 @@ spring:
 
 server:
   # 开发环境默认端口（本地启动用）
-  port: 8888
+  port: ${SERVER_PORT:8888}
 
 logging:
   level:

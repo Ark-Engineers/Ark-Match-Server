@@ -13,6 +13,10 @@ import jakarta.validation.Valid;
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
+import java.net.URI;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
 import org.springframework.http.HttpHeaders;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -92,6 +96,23 @@ public class AuthController {
     public Mono<ApiResponse<CaptchaResponse>> newCaptcha(ServerWebExchange exchange) {
         exchange.getResponse().getHeaders().set(HttpHeaders.CACHE_CONTROL, "no-store, no-cache, must-revalidate, max-age=0");
         exchange.getResponse().getHeaders().set(HttpHeaders.PRAGMA, "no-cache");
+        // #region debug-point H1:captcha-new
+        try {
+            var url = System.getenv("DEBUG_SERVER_URL");
+            if (url == null || url.isBlank()) url = "http://127.0.0.1:7777/event";
+            var session = System.getenv("DEBUG_SESSION_ID");
+            if (session == null || session.isBlank()) session = "captcha-not-working";
+            var origin = String.valueOf(exchange.getRequest().getHeaders().getFirst(HttpHeaders.ORIGIN));
+            var referer = String.valueOf(exchange.getRequest().getHeaders().getFirst(HttpHeaders.REFERER));
+            var ua = String.valueOf(exchange.getRequest().getHeaders().getFirst(HttpHeaders.USER_AGENT));
+            var body = "{\"sessionId\":\"" + session + "\",\"runId\":\"pre\",\"hypothesisId\":\"H1\",\"location\":\"AuthController:newCaptcha\",\"msg\":\"[DEBUG] /auth/captcha/new hit\",\"data\":{\"origin\":\"" + origin.replace("\"", "'") + "\",\"referer\":\"" + referer.replace("\"", "'") + "\",\"ua\":\"" + ua.replace("\"", "'") + "\"},\"ts\":" + System.currentTimeMillis() + "}";
+            HttpClient.newHttpClient().sendAsync(
+                    HttpRequest.newBuilder().uri(URI.create(url)).header("Content-Type", "application/json").POST(HttpRequest.BodyPublishers.ofString(body)).build(),
+                    HttpResponse.BodyHandlers.discarding()
+            ).exceptionally(e -> null);
+        } catch (Exception ignored) {
+        }
+        // #endregion
         return captchaService.create().map(c -> ApiResponse.ok(new CaptchaResponse(c.captchaId(), c.svg())));
     }
 

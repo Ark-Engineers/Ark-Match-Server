@@ -7,6 +7,12 @@ import java.security.MessageDigest;
 import java.security.SecureRandom;
 import java.time.Duration;
 import java.util.Base64;
+import java.net.URI;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.redis.core.ReactiveStringRedisTemplate;
 import org.springframework.stereotype.Component;
@@ -39,6 +45,41 @@ public class CaptchaService {
     public record CaptchaDebug(boolean exists, long ttlSeconds) {
     }
 
+    private static volatile String DBG_URL;
+    private static volatile String DBG_SESSION;
+
+    private void dbg(String hypothesisId, String location, String msg, String dataJson) {
+        // #region debug-point H?:captcha
+        try {
+            var url = DBG_URL;
+            var session = DBG_SESSION;
+            if (url == null || url.isBlank() || session == null || session.isBlank()) {
+                var p = Path.of(".dbg", "captcha-not-working.env");
+                if (Files.exists(p)) {
+                    var raw = Files.readString(p, StandardCharsets.UTF_8);
+                    var lines = raw.split("\\R");
+                    for (var line : lines) {
+                        if (line.startsWith("DEBUG_SERVER_URL=")) url = line.substring("DEBUG_SERVER_URL=".length()).trim();
+                        if (line.startsWith("DEBUG_SESSION_ID=")) session = line.substring("DEBUG_SESSION_ID=".length()).trim();
+                    }
+                }
+                if (url == null || url.isBlank()) url = System.getenv("DEBUG_SERVER_URL");
+                if (session == null || session.isBlank()) session = System.getenv("DEBUG_SESSION_ID");
+                if (session == null || session.isBlank()) session = "captcha-not-working";
+                DBG_URL = url;
+                DBG_SESSION = session;
+            }
+            if (url == null || url.isBlank()) return;
+            var body = "{\"sessionId\":\"" + session + "\",\"runId\":\"pre\",\"hypothesisId\":\"" + hypothesisId + "\",\"location\":\"" + location + "\",\"msg\":\"[DEBUG] " + msg.replace("\"", "'") + "\",\"data\":" + (dataJson == null ? "{}" : dataJson) + ",\"ts\":" + System.currentTimeMillis() + "}";
+            HttpClient.newHttpClient().sendAsync(
+                    HttpRequest.newBuilder().uri(URI.create(url)).header("Content-Type", "application/json").POST(HttpRequest.BodyPublishers.ofString(body)).build(),
+                    HttpResponse.BodyHandlers.discarding()
+            ).exceptionally(e -> null);
+        } catch (Exception ignored) {
+        }
+        // #endregion
+    }
+
     public Mono<CaptchaChallenge> create() {
         var text = randomText(4);
         var captchaId = randomSalt();
@@ -46,9 +87,11 @@ public class CaptchaService {
         var hash = sha256Hex(secret + ":" + salt + ":" + text.toUpperCase());
         var key = KEY_PREFIX + captchaId;
         var stored = salt + "|" + hash;
+        dbg("H3", "CaptchaService:create", "captcha create start", "{\"captchaId\":\"" + captchaId + "\",\"ttlSeconds\":" + ttl.toSeconds() + "}");
         return redis.opsForValue()
                 .set(key, stored, ttl)
                 .flatMap(ok -> {
+                    dbg("H3", "CaptchaService:create", "captcha create redis set", "{\"captchaId\":\"" + captchaId + "\",\"ok\":" + (Boolean.TRUE.equals(ok) ? "true" : "false") + "}");
                     if (Boolean.TRUE.equals(ok)) {
                         return Mono.just(new CaptchaChallenge(captchaId, toSvg(text)));
                     }
@@ -91,6 +134,7 @@ public class CaptchaService {
         var id = captchaId == null ? "" : captchaId.trim();
         var rawText = captchaText == null ? "" : captchaText.trim();
         final String text = rawText.length() > 4 ? rawText.substring(0, 4) : rawText;
+        dbg("H4", "CaptchaService:verify", "captcha verify start", "{\"consume\":" + (consume ? "true" : "false") + ",\"captchaId\":\"" + id + "\",\"textLen\":" + text.length() + "}");
         if (id.isBlank() || text.isBlank()) {
             return Mono.error(new BusinessException(ErrorCode.CAPTCHA_INVALID));
         }
@@ -101,6 +145,7 @@ public class CaptchaService {
         return getStoredWithRetry(key)
                 .switchIfEmpty(Mono.error(new BusinessException(ErrorCode.CAPTCHA_EXPIRED)))
                 .flatMap(stored -> {
+                    dbg("H3", "CaptchaService:verify", "captcha verify stored fetched", "{\"captchaId\":\"" + id + "\",\"storedBlank\":" + (stored == null || stored.isBlank() ? "true" : "false") + "}");
                     if (stored == null || stored.isBlank()) {
                         return Mono.error(new BusinessException(ErrorCode.CAPTCHA_EXPIRED));
                     }
@@ -112,8 +157,10 @@ public class CaptchaService {
                     var hash = parts[1];
                     var expected = sha256Hex(secret + ":" + salt + ":" + text.toUpperCase());
                     if (!constantTimeEquals(hash, expected)) {
+                        dbg("H4", "CaptchaService:verify", "captcha verify mismatch", "{\"captchaId\":\"" + id + "\"}");
                         return Mono.error(new BusinessException(ErrorCode.CAPTCHA_INVALID));
                     }
+                    dbg("H4", "CaptchaService:verify", "captcha verify ok", "{\"captchaId\":\"" + id + "\",\"consume\":" + (consume ? "true" : "false") + "}");
                     if (consume) return redis.delete(key).then();
                     return Mono.empty();
                 });

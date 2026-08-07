@@ -62,6 +62,71 @@ public interface QuestionnaireMapper {
               created_at AS createdAt,
               updated_at AS updatedAt
             FROM `questionnaire`
+            WHERE status = 'READY'
+              AND deleted = 0
+            ORDER BY updated_at DESC, id DESC
+            LIMIT 1
+            """)
+    QuestionnaireDO selectCurrentReady();
+
+    @Select("""
+            SELECT
+              id,
+              title,
+              subtitle,
+              status,
+              created_by AS createdBy,
+              updated_by AS updatedBy,
+              deleted,
+              created_at AS createdAt,
+              updated_at AS updatedAt
+            FROM `questionnaire`
+            WHERE id = #{id}
+              AND status = 'READY'
+              AND deleted = 0
+            LIMIT 1
+            """)
+    QuestionnaireDO selectReadyById(@Param("id") long id);
+
+    @Select("""
+            SELECT
+              id,
+              title,
+              subtitle,
+              status,
+              created_by AS createdBy,
+              updated_by AS updatedBy,
+              deleted,
+              created_at AS createdAt,
+              updated_at AS updatedAt
+            FROM `questionnaire`
+            WHERE status = 'READY'
+              AND deleted = 0
+            ORDER BY updated_at DESC, id DESC
+            LIMIT #{limit} OFFSET #{offset}
+            """)
+    List<QuestionnaireDO> selectReadyList(@Param("limit") int limit, @Param("offset") int offset);
+
+    @Select("""
+            SELECT COUNT(1)
+            FROM `questionnaire`
+            WHERE status = 'READY'
+              AND deleted = 0
+            """)
+    long countReady();
+
+    @Select("""
+            SELECT
+              id,
+              title,
+              subtitle,
+              status,
+              created_by AS createdBy,
+              updated_by AS updatedBy,
+              deleted,
+              created_at AS createdAt,
+              updated_at AS updatedAt
+            FROM `questionnaire`
             WHERE deleted = 0
             ORDER BY id DESC
             LIMIT #{limit} OFFSET #{offset}
@@ -103,4 +168,3 @@ public interface QuestionnaireMapper {
             """)
     int softDelete(@Param("id") long id, @Param("updatedBy") long updatedBy);
 }
-
