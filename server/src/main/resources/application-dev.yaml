@@ -8,9 +8,9 @@ spring:
     # 强烈建议不要把真实账号/密码提交到仓库：
     # - 本地开发可直接填明文（仅限本机、不提交）
     # - 更推荐改为环境变量形式：password: ${DB_PASSWORD:}
-    url: ${DB_URL:jdbc:mysql://i.leningcloud.com:3306/ark_match?useUnicode=true&characterEncoding=utf8&useSSL=false&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true}
+    url: ${DB_URL:jdbc:mysql://www.chenmyserver.cn:3306/ark_match?useUnicode=true&characterEncoding=utf8&useSSL=false&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true}
     username: ark_match
-    password: ark123
+    password: ark_match
 
   data:
     redis:
@@ -18,9 +18,9 @@ spring:
       # 强烈建议不要把真实密码提交到仓库：
       # - 本地开发可直接填明文（仅限本机、不提交）
       # - 更推荐改为环境变量形式：password: ${REDIS_PASSWORD:}
-      host: i.leningcloud.com
-      port: 6379
-      password: shengda
+      host: www.chenmyserver.cn
+      port: 63791
+      password: chen
 
   mail:
     # 邮件发送（邮箱验证码依赖）
