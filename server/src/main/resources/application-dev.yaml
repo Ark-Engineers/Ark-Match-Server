@@ -59,6 +59,8 @@ mybatis:
     map-underscore-to-camel-case: true
 
 app:
+  spine:
+    base-dir: ${SPINE_BASE_DIR:./data/spine}
   geo:
     amap:
       key: 3be6b6df5e35422fd855f6515861539f

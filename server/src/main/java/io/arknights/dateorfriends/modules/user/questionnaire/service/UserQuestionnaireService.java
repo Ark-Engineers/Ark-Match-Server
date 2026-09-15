@@ -212,9 +212,10 @@ public class UserQuestionnaireService {
         var mainSeqs = new HashSet<Integer>();
         var children = new ArrayList<io.arknights.dateorfriends.modules.admin.questionnaire.mapper.QuestionnaireQuestionDO>();
         for (var q : questions) {
-            var key = key(q.getParentSeq() == null ? 0 : q.getParentSeq(), q.getSeq());
+            var parentSeq = q.getParentSeq() == null ? 0 : q.getParentSeq();
+            var key = key(parentSeq, q.getSeq());
             questionMap.put(key, q);
-            if (q.getParentSeq() != null && q.getParentSeq() == 0) {
+            if (parentSeq == 0) {
                 mainSeqs.add(q.getSeq());
             } else {
                 children.add(q);

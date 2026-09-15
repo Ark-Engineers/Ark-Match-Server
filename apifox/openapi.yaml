@@ -146,6 +146,33 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ApiResponseError'
+  /assets/spine/{assetKey}/{fileName}:
+    get:
+      tags: [Admin]
+      summary: Spine 资源-公开文件访问
+      description: 公共只读访问 Spine 文件（用于前端预览，GET 不要求鉴权）
+      security: []
+      parameters:
+        - name: assetKey
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: fileName
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
+        '404':
+          description: 文件不存在
   /auth/register/email-code/send:
     post:
       tags: [Auth]
@@ -291,6 +318,42 @@ paths:
                 $ref: '#/components/schemas/ApiResponseCaptchaCheckResponse'
         '400':
           description: 参数不合法
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseError'
+        '500':
+          description: 服务端错误
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseError'
+  /auth/dev/token:
+    post:
+      tags: [Auth]
+      summary: 测试-直接获取 Token
+      description: 仅开发环境（profile=dev）可用；绕过图形验证码，使用账号密码直接签发 Access/Refresh 双令牌（用于 Apifox/联调）
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DevTokenRequest'
+            examples:
+              admin:
+                value:
+                  account: admin
+                  password: admin
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseTokenResponse'
+        '400':
+          description: 参数不合法 / 账号或密码错误
           content:
             application/json:
               schema:
@@ -555,6 +618,186 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ApiResponseAvatarOptionList'
+        '401':
+          description: 未登录或令牌无效
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseError'
+  /user/match/recommendations:
+    get:
+      tags: [User]
+      summary: 匹配推荐列表
+      description: 基于双方问卷答案与权重计算相似度，返回推荐用户列表（需要先填写问卷）
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            format: int32
+            default: 20
+        - name: offset
+          in: query
+          required: false
+          schema:
+            type: integer
+            format: int32
+            default: 0
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseMatchRecommendationList'
+        '401':
+          description: 未登录或令牌无效
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseError'
+  /user/questionnaire/current:
+    get:
+      tags: [User]
+      summary: 用户端-当前问卷定义
+      description: 返回当前（最新 READY）问卷元信息+题目列表+用户作答状态
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseUserQuestionnaireCurrent'
+        '401':
+          description: 未登录或令牌无效
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseError'
+  /user/questionnaire/ready-list:
+    get:
+      tags: [User]
+      summary: 用户端-已发布问卷列表
+      description: 返回已发布(READY)问卷列表（用于问卷刷新页选择）
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: page
+          in: query
+          required: false
+          schema:
+            type: integer
+            format: int32
+            default: 1
+        - name: size
+          in: query
+          required: false
+          schema:
+            type: integer
+            format: int32
+            default: 50
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseUserQuestionnaireReadyList'
+        '401':
+          description: 未登录或令牌无效
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseError'
+  /user/questionnaire/{id}:
+    get:
+      tags: [User]
+      summary: 用户端-指定问卷定义
+      description: 获取指定问卷（READY）元信息+题目列表+用户作答状态
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseUserQuestionnaireCurrent'
+        '400':
+          description: 参数不合法/问卷不存在
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseError'
+        '401':
+          description: 未登录或令牌无效
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseError'
+  /user/questionnaire/my-active:
+    get:
+      tags: [User]
+      summary: 用户端-我的已提交问卷答案
+      description: 用于问卷刷新/回显预填（未提交时返回 400）
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseUserQuestionnaireMyActive'
+        '400':
+          description: 未提交问卷/参数不合法
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseError'
+        '401':
+          description: 未登录或令牌无效
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseError'
+  /user/questionnaire/submit:
+    post:
+      tags: [User]
+      summary: 用户端-提交问卷答案
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UserQuestionnaireSubmitRequest'
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseVoid'
+        '400':
+          description: 参数不合法/存在未填写的题目/答案不合法
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseError'
         '401':
           description: 未登录或令牌无效
           content:
@@ -1714,6 +1957,45 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ApiResponseError'
+  /admin/user-manage/users/{id}:
+    get:
+      tags: [Admin]
+      summary: 超级管理员-用户管理-用户详情
+      description: 仅 SUPER_ADMIN 可访问；按用户ID查询详细信息
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseUserManageUser'
+        '400':
+          description: 参数不合法/用户不存在
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseError'
+        '401':
+          description: 未登录或令牌无效
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseError'
+        '403':
+          description: 无权限（仅超级管理员）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseError'
   /admin/user-manage/update-profile:
     post:
       tags: [Admin]
@@ -1931,6 +2213,82 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ApiResponseError'
+  /admin/user-manage/admin/disable:
+    post:
+      tags: [Admin]
+      summary: 超级管理员-用户管理-禁用管理员账号
+      description: 将管理员账号状态置为 SUSPENDED，并吊销该用户全部 token（需要二次确认）
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UserManageAdminToggleRequest'
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseVoid'
+        '400':
+          description: 参数不合法/需要二次确认/禁止操作自身账号
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseError'
+        '401':
+          description: 未登录或令牌无效
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseError'
+        '403':
+          description: 无权限（仅超级管理员）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseError'
+  /admin/user-manage/admin/enable:
+    post:
+      tags: [Admin]
+      summary: 超级管理员-用户管理-启用管理员账号
+      description: 将管理员账号状态从 SUSPENDED 恢复为 NORMAL，并吊销该用户全部 token（需要二次确认）
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UserManageAdminToggleRequest'
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseVoid'
+        '400':
+          description: 参数不合法/需要二次确认
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseError'
+        '401':
+          description: 未登录或令牌无效
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseError'
+        '403':
+          description: 无权限（仅超级管理员）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseError'
   /admin/user-manage/logs:
     get:
       tags: [Admin]
@@ -2115,6 +2473,239 @@ paths:
                 $ref: '#/components/schemas/ApiResponseError'
         '403':
           description: 无权限（仅超级管理员）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseError'
+  /admin/spine/list:
+    get:
+      tags: [Admin]
+      summary: Spine 资源-列表
+      description: 管理端分页查询 Spine 资源（ADMIN/SUPER_ADMIN）
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: keyword
+          in: query
+          required: false
+          schema:
+            type: string
+          description: 按 key/名称模糊查询
+        - name: page
+          in: query
+          required: false
+          schema:
+            type: integer
+            format: int32
+            default: 1
+        - name: size
+          in: query
+          required: false
+          schema:
+            type: integer
+            format: int32
+            default: 20
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponsePageSpineAssetItem'
+        '401':
+          description: 未登录或令牌无效
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseError'
+        '403':
+          description: 无权限（仅管理员）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseError'
+  /admin/spine/{id}:
+    get:
+      tags: [Admin]
+      summary: Spine 资源-详情
+      description: 获取 Spine 资源详情（含文件清单）
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseSpineDetail'
+        '401':
+          description: 未登录或令牌无效
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseError'
+        '403':
+          description: 无权限（仅管理员）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseError'
+    delete:
+      tags: [Admin]
+      summary: Spine 资源-删除
+      description: 删除 Spine 资源（同时清理文件与数据库记录）
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseVoid'
+        '401':
+          description: 未登录或令牌无效
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseError'
+        '403':
+          description: 无权限（仅管理员）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseError'
+  /admin/spine/import:
+    post:
+      tags: [Admin]
+      summary: Spine 资源-导入
+      description: 上传 atlas/skel/png 并落盘，生成资源 key（由 atlas/skel 文件名推断），写入数据库
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/SpineImportForm'
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseSpineDetail'
+        '400':
+          description: 参数不合法
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseError'
+        '401':
+          description: 未登录或令牌无效
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseError'
+        '403':
+          description: 无权限（仅管理员）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseError'
+  /admin/spine/import-zip:
+    post:
+      tags: [Admin]
+      summary: Spine 资源-导入（ZIP）
+      description: 上传 zip（内部必须包含 1 个 atlas、1 个 skel、>=1 张 png；atlas 与 skel 文件名需一致，用于推断 key）
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/SpineImportZipForm'
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseSpineDetail'
+        '400':
+          description: 参数不合法
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseError'
+        '401':
+          description: 未登录或令牌无效
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseError'
+        '403':
+          description: 无权限（仅管理员）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseError'
+  /admin/spine/{id}/update:
+    post:
+      tags: [Admin]
+      summary: Spine 资源-更新
+      description: 更新资源名称；可选择 zip 整包覆盖或使用 atlas/skel/png 覆盖（覆盖会清理旧文件）
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/SpineUpdateForm'
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseSpineDetail'
+        '400':
+          description: 参数不合法
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseError'
+        '401':
+          description: 未登录或令牌无效
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseError'
+        '403':
+          description: 无权限（仅管理员）
           content:
             application/json:
               schema:
@@ -2631,6 +3222,70 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ApiResponseError'
+  /admin/questionnaire/publish:
+    post:
+      tags: [Admin]
+      summary: 问卷管理-发布
+      description: 将问卷状态设置为 READY；仅 READY 的问卷会展示在用户端（首页/填写/刷新）
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/QuestionnaireIdRequest'
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseVoid'
+        '400':
+          description: 参数不合法/问卷题目为空
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseError'
+        '401':
+          description: 未登录或令牌无效
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseError'
+  /admin/questionnaire/unpublish:
+    post:
+      tags: [Admin]
+      summary: 问卷管理-撤回发布
+      description: 将问卷状态从 READY 撤回为 DRAFT；撤回后用户端不再展示
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/QuestionnaireIdRequest'
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseVoid'
+        '400':
+          description: 参数不合法
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseError'
+        '401':
+          description: 未登录或令牌无效
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseError'
   /admin/questionnaire/{id}:
     get:
       tags: [Admin]
@@ -3005,6 +3660,192 @@ components:
         emailCode:
           type: string
           example: '123456'
+    DevTokenRequest:
+      type: object
+      required: [account, password]
+      properties:
+        account:
+          type: string
+          description: 登录账号（user.account）
+          example: admin
+        password:
+          type: string
+          description: 登录密码（明文；后端 BCrypt 验证）
+          example: admin
+    SpineAssetItem:
+      type: object
+      required: [id, assetKey, name, createdBy, updatedBy, createdAt, updatedAt]
+      properties:
+        id:
+          type: integer
+          format: int64
+        assetKey:
+          type: string
+          description: 资源标识（由 atlas/skel 文件名推断）
+        name:
+          type: string
+          nullable: true
+          description: 展示名称
+        createdBy:
+          type: integer
+          format: int64
+        updatedBy:
+          type: integer
+          format: int64
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+    SpineFileItem:
+      type: object
+      required: [id, fileType, originalName, storedName, relativePath, sizeBytes, mimeType, url, createdAt]
+      properties:
+        id:
+          type: integer
+          format: int64
+        fileType:
+          type: string
+          enum: [ATLAS, SKEL, PNG, OTHER]
+        originalName:
+          type: string
+        storedName:
+          type: string
+        relativePath:
+          type: string
+        sizeBytes:
+          type: integer
+          format: int64
+        mimeType:
+          type: string
+          nullable: true
+        url:
+          type: string
+          description: 公共只读访问路径（前端开发环境需加 /api 前缀经代理）
+        createdAt:
+          type: string
+          format: date-time
+    SpineDetail:
+      type: object
+      required: [asset, files]
+      properties:
+        asset:
+          $ref: '#/components/schemas/SpineAssetItem'
+        files:
+          type: array
+          items:
+            $ref: '#/components/schemas/SpineFileItem'
+    PageSpineAssetItem:
+      type: object
+      required: [total, page, size, items]
+      properties:
+        total:
+          type: integer
+          format: int64
+        page:
+          type: integer
+          format: int32
+        size:
+          type: integer
+          format: int32
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/SpineAssetItem'
+    ApiResponsePageSpineAssetItem:
+      type: object
+      required: [code, message, data]
+      properties:
+        code:
+          type: integer
+          format: int32
+          example: 0
+        message:
+          type: string
+          example: ok
+        data:
+          $ref: '#/components/schemas/PageSpineAssetItem'
+    ApiResponseSpineDetail:
+      type: object
+      required: [code, message, data]
+      properties:
+        code:
+          type: integer
+          format: int32
+          example: 0
+        message:
+          type: string
+          example: ok
+        data:
+          $ref: '#/components/schemas/SpineDetail'
+    SpineImportForm:
+      type: object
+      required: [atlas, skel, png]
+      properties:
+        name:
+          type: string
+          nullable: true
+          description: 展示名称（可选）
+        atlas:
+          type: string
+          format: binary
+          description: .atlas 文件（文件名用于推断 key）
+        skel:
+          type: string
+          format: binary
+          description: .skel 文件（文件名用于推断 key）
+        png:
+          type: array
+          items:
+            type: string
+            format: binary
+          description: 纹理 png（可多张；文件名需与 atlas 引用一致）
+        extra:
+          type: array
+          items:
+            type: string
+            format: binary
+          description: 其它关联文件（可选）
+    SpineImportZipForm:
+      type: object
+      required: [zip]
+      properties:
+        name:
+          type: string
+          nullable: true
+          description: 展示名称（可选）
+        zip:
+          type: string
+          format: binary
+          description: zip 压缩包（内部必须包含 1 个 atlas、1 个 skel、>=1 张 png；不支持目录结构）
+    SpineUpdateForm:
+      type: object
+      properties:
+        name:
+          type: string
+          nullable: true
+          description: 展示名称（可选）
+        zip:
+          type: string
+          format: binary
+          description: zip 整包覆盖（可选；与 atlas/skel/png 二选一）
+        atlas:
+          type: string
+          format: binary
+        skel:
+          type: string
+          format: binary
+        png:
+          type: array
+          items:
+            type: string
+            format: binary
+        extra:
+          type: array
+          items:
+            type: string
+            format: binary
     TestIssueEmailCodeRequest:
       type: object
       required: [email, purpose]
@@ -3928,6 +4769,222 @@ components:
           example: ok
         data:
           $ref: '#/components/schemas/UserProfile'
+    MatchRecommendationItem:
+      type: object
+      required: [userId, nickname, tags, score]
+      properties:
+        userId:
+          type: integer
+          format: int64
+        nickname:
+          type: string
+        avatarUrl:
+          type: string
+          nullable: true
+        region:
+          type: string
+          nullable: true
+        age:
+          type: integer
+          format: int32
+          nullable: true
+        tags:
+          type: array
+          items:
+            type: string
+        score:
+          type: number
+          format: double
+        highlights:
+          type: array
+          items:
+            type: string
+    ApiResponseMatchRecommendationList:
+      type: object
+      required: [code, message, data]
+      properties:
+        code:
+          type: integer
+          format: int32
+          example: 0
+        message:
+          type: string
+          example: ok
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/MatchRecommendationItem'
+    UserQuestionnaireMeta:
+      type: object
+      required: [id, title]
+      properties:
+        id:
+          type: integer
+          format: int64
+        title:
+          type: string
+        subtitle:
+          type: string
+          nullable: true
+    UserQuestionnaireQuestionItem:
+      type: object
+      required: [seq, question, type]
+      properties:
+        seq:
+          type: integer
+          format: int32
+        question:
+          type: string
+        type:
+          type: string
+          description: 单选/判断/填空/多选_X
+        options:
+          type: string
+          nullable: true
+        parentSeq:
+          type: integer
+          format: int32
+          nullable: true
+          description: 0 或 null 表示主问题；其他为子问题所属主问题序号
+        triggerOption:
+          type: string
+          nullable: true
+        weight:
+          type: string
+          nullable: true
+    UserQuestionnaireState:
+      type: object
+      required: [hasActiveAnswer, needReSubmit]
+      properties:
+        hasActiveAnswer:
+          type: boolean
+        activeAnswerQuestionnaireId:
+          type: integer
+          format: int64
+          nullable: true
+        needReSubmit:
+          type: boolean
+        activeSubmittedAt:
+          type: string
+          nullable: true
+    UserQuestionnaireCurrentResponse:
+      type: object
+      required: [questionnaire, questions, state]
+      properties:
+        questionnaire:
+          $ref: '#/components/schemas/UserQuestionnaireMeta'
+          nullable: true
+        questions:
+          type: array
+          items:
+            $ref: '#/components/schemas/UserQuestionnaireQuestionItem'
+        state:
+          $ref: '#/components/schemas/UserQuestionnaireState'
+    ApiResponseUserQuestionnaireCurrent:
+      type: object
+      required: [code, message, data]
+      properties:
+        code:
+          type: integer
+          format: int32
+          example: 0
+        message:
+          type: string
+          example: ok
+        data:
+          $ref: '#/components/schemas/UserQuestionnaireCurrentResponse'
+    UserQuestionnaireReadyItem:
+      type: object
+      required: [id, title]
+      properties:
+        id:
+          type: integer
+          format: int64
+        title:
+          type: string
+        subtitle:
+          type: string
+          nullable: true
+        updatedAt:
+          type: string
+          nullable: true
+    ApiResponseUserQuestionnaireReadyList:
+      type: object
+      required: [code, message, data]
+      properties:
+        code:
+          type: integer
+          format: int32
+          example: 0
+        message:
+          type: string
+          example: ok
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/UserQuestionnaireReadyItem'
+    UserQuestionnaireMyActiveItem:
+      type: object
+      required: [parentSeq, seq, answerText]
+      properties:
+        parentSeq:
+          type: integer
+          format: int32
+        seq:
+          type: integer
+          format: int32
+        answerText:
+          type: string
+    UserQuestionnaireMyActiveResponse:
+      type: object
+      required: [questionnaireId, answers]
+      properties:
+        questionnaireId:
+          type: integer
+          format: int64
+        submittedAt:
+          type: string
+          nullable: true
+        answers:
+          type: array
+          items:
+            $ref: '#/components/schemas/UserQuestionnaireMyActiveItem'
+    ApiResponseUserQuestionnaireMyActive:
+      type: object
+      required: [code, message, data]
+      properties:
+        code:
+          type: integer
+          format: int32
+          example: 0
+        message:
+          type: string
+          example: ok
+        data:
+          $ref: '#/components/schemas/UserQuestionnaireMyActiveResponse'
+    UserQuestionnaireSubmitAnswerItem:
+      type: object
+      required: [parentSeq, seq, answerText]
+      properties:
+        parentSeq:
+          type: integer
+          format: int32
+        seq:
+          type: integer
+          format: int32
+        answerText:
+          type: string
+    UserQuestionnaireSubmitRequest:
+      type: object
+      required: [questionnaireId]
+      properties:
+        questionnaireId:
+          type: integer
+          format: int64
+        answers:
+          type: array
+          items:
+            $ref: '#/components/schemas/UserQuestionnaireSubmitAnswerItem'
     ApiResponseBoolean:
       type: object
       required: [code, message, data]
@@ -4573,6 +5630,32 @@ components:
           example: ok
         data:
           $ref: '#/components/schemas/PageUserManageUser'
+    ApiResponseUserManageUser:
+      type: object
+      required: [code, message, data]
+      properties:
+        code:
+          type: integer
+          format: int32
+          example: 0
+        message:
+          type: string
+          example: ok
+        data:
+          $ref: '#/components/schemas/UserManageUser'
+    UserManageAdminToggleRequest:
+      type: object
+      required: [userId, confirm]
+      properties:
+        userId:
+          type: integer
+          format: int64
+        reason:
+          type: string
+          nullable: true
+        confirm:
+          type: boolean
+          default: true
     UserManageUpdateProfileRequest:
       type: object
       required: [userId, confirm]

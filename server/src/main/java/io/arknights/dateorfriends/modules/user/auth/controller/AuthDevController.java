@@ -24,6 +24,7 @@ import org.springframework.web.server.ServerWebExchange;
 import reactor.core.publisher.Mono;
 import io.arknights.dateorfriends.tools.captcha.CaptchaService;
 import org.springframework.beans.factory.annotation.Value;
+import io.arknights.dateorfriends.modules.user.auth.service.AuthService;
 
 @Profile("dev")
 @RestController
@@ -34,6 +35,7 @@ public class AuthDevController {
     private final CaptchaService captchaService;
     private final ReactiveStringRedisTemplate redis;
     private final Environment environment;
+    private final AuthService authService;
     private final String redisHost;
     private final int redisPort;
     private final int redisDatabase;
@@ -45,6 +47,7 @@ public class AuthDevController {
             CaptchaService captchaService,
             ReactiveStringRedisTemplate redis,
             Environment environment,
+            AuthService authService,
             @Value("${spring.data.redis.host:}") String redisHost,
             @Value("${spring.data.redis.port:0}") int redisPort,
             @Value("${spring.data.redis.database:0}") int redisDatabase,
@@ -54,6 +57,7 @@ public class AuthDevController {
         this.captchaService = captchaService;
         this.redis = redis;
         this.environment = environment;
+        this.authService = authService;
         this.redisHost = redisHost;
         this.redisPort = redisPort;
         this.redisDatabase = redisDatabase;
@@ -90,6 +94,18 @@ public class AuthDevController {
     public Mono<ApiResponse<CaptchaCheckResponse>> checkCaptcha(@Valid @RequestBody CaptchaCheckRequest req) {
         return captchaService.debug(req.captchaId())
                 .map(r -> ApiResponse.ok(new CaptchaCheckResponse(r.exists(), r.ttlSeconds())));
+    }
+
+    public record DevTokenRequest(
+            @NotBlank String account,
+            @NotBlank String password
+    ) {
+    }
+
+    @PostMapping("/token")
+    public Mono<ApiResponse<TokenResponse>> issueToken(@Valid @RequestBody DevTokenRequest req, ServerWebExchange exchange) {
+        var ip = IpUtils.resolveClientIp(exchange);
+        return authService.login(req.account(), req.password(), ip).map(ApiResponse::ok);
     }
 
     public record RedisInfoResponse(String instanceId, int serverPort, String host, int port, int database, String activeProfiles, boolean ok, String error) {

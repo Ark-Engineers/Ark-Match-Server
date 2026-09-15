@@ -1,15 +1,16 @@
 spring:
   config:
     activate:
-      on-profile: prod
+      # 开发环境 profile
+      on-profile: chen
   datasource:
     # 数据库连接（开发环境）
     # 强烈建议不要把真实账号/密码提交到仓库：
     # - 本地开发可直接填明文（仅限本机、不提交）
     # - 更推荐改为环境变量形式：password: ${DB_PASSWORD:}
-    url: ${DB_URL:jdbc:mysql://127.0.0.1:3306/ark_match?useUnicode=true&characterEncoding=utf8&useSSL=false&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true}
+    url: ${DB_URL:jdbc:mysql://192.168.0.104:3306/ark_match?useUnicode=true&characterEncoding=utf8&useSSL=false&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true}
     username: ark_match
-    password: ark123
+    password: ark_match
 
   data:
     redis:
@@ -17,7 +18,7 @@ spring:
       # 强烈建议不要把真实密码提交到仓库：
       # - 本地开发可直接填明文（仅限本机、不提交）
       # - 更推荐改为环境变量形式：password: ${REDIS_PASSWORD:}
-      host: 127.0.0.1
+      host: 192.168.0.104
       port: 6379
       password: chen
 
@@ -45,20 +46,24 @@ spring:
 
 server:
   # 开发环境默认端口（本地启动用）
-  port: 9846
+  port: ${SERVER_PORT:8888}
 
 logging:
   level:
     root: INFO
+    # 开发环境建议开启项目包 DEBUG，方便排查问题
+    io.arknights: DEBUG
 
 mybatis:
   configuration:
     map-underscore-to-camel-case: true
 
 app:
+  spine:
+    base-dir: ${SPINE_BASE_DIR:./data/spine}
   geo:
     amap:
-      key: ${AMAP_KEY:}
+      key: 3be6b6df5e35422fd855f6515861539f
   jwt:
     secret: ${JWT_SECRET:dev-jwt-secret-change-me}
     issuer: ${JWT_ISSUER:dateOrFriends}

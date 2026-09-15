@@ -84,6 +84,9 @@ public class AdminQuestionnaireController {
     public record IdRequest(@Min(1) long id) {
     }
 
+    public record PublishRequest(@Min(1) long id) {
+    }
+
     @GetMapping("/list")
     public Mono<ApiResponse<PageResponse<ListItem>>> list(
             @RequestParam(value = "page", defaultValue = "1") int page,
@@ -234,6 +237,20 @@ public class AdminQuestionnaireController {
         var principal = exchange.<JwtPrincipal>getAttribute(AuthWebFilter.ATTR_PRINCIPAL);
         assertAdmin(principal);
         return questionnaireService.delete(req.id(), principal.userId()).thenReturn(ApiResponse.ok(null));
+    }
+
+    @PostMapping("/publish")
+    public Mono<ApiResponse<Void>> publish(@Valid @RequestBody PublishRequest req, ServerWebExchange exchange) {
+        var principal = exchange.<JwtPrincipal>getAttribute(AuthWebFilter.ATTR_PRINCIPAL);
+        assertAdmin(principal);
+        return questionnaireService.publish(req.id(), principal.userId()).thenReturn(ApiResponse.ok(null));
+    }
+
+    @PostMapping("/unpublish")
+    public Mono<ApiResponse<Void>> unpublish(@Valid @RequestBody PublishRequest req, ServerWebExchange exchange) {
+        var principal = exchange.<JwtPrincipal>getAttribute(AuthWebFilter.ATTR_PRINCIPAL);
+        assertAdmin(principal);
+        return questionnaireService.unpublish(req.id(), principal.userId()).thenReturn(ApiResponse.ok(null));
     }
 
     private static void assertAdmin(JwtPrincipal principal) {

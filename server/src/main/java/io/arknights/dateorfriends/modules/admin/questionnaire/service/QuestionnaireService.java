@@ -184,7 +184,7 @@ public class QuestionnaireService {
                     var q = new QuestionnaireDO();
                     q.setTitle(title);
                     q.setSubtitle(subtitle);
-                    q.setStatus("READY");
+                    q.setStatus("DRAFT");
                     q.setCreatedBy(actorId);
                     q.setUpdatedBy(actorId);
                     q.setDeleted(0);
@@ -231,7 +231,8 @@ public class QuestionnaireService {
                     var list = questions == null ? List.<QuestionItem>of() : questions;
                     validateUpdate(list);
 
-                    questionnaireMapper.updateMeta(id, title, subtitle, "READY", actorId);
+                    var status = existed.getStatus() == null ? "DRAFT" : existed.getStatus();
+                    questionnaireMapper.updateMeta(id, title, subtitle, status, actorId);
                     questionMapper.deleteByQuestionnaireId(id);
 
                     var items = new ArrayList<QuestionnaireQuestionDO>();
@@ -255,9 +256,38 @@ public class QuestionnaireService {
                         }
                     }
 
-                    return new QuestionnaireDetail(id, title, subtitle, "READY", list);
+                    return new QuestionnaireDetail(id, title, subtitle, status, list);
                 })
                 .subscribeOn(Schedulers.boundedElastic());
+    }
+
+    public Mono<Void> publish(long id, long actorId) {
+        return Mono.fromCallable(() -> {
+                    if (id <= 0) throw new BusinessException(ErrorCode.PARAM_INVALID);
+                    var existed = questionnaireMapper.selectById(id);
+                    if (existed == null) throw new BusinessException(ErrorCode.PARAM_INVALID, "问卷不存在");
+
+                    var qs = questionMapper.selectByQuestionnaireId(id);
+                    if (qs == null || qs.isEmpty()) {
+                        throw new BusinessException(ErrorCode.PARAM_INVALID, "问卷题目为空");
+                    }
+                    questionnaireMapper.updateMeta(id, existed.getTitle(), existed.getSubtitle(), "READY", actorId);
+                    return 0;
+                })
+                .subscribeOn(Schedulers.boundedElastic())
+                .then();
+    }
+
+    public Mono<Void> unpublish(long id, long actorId) {
+        return Mono.fromCallable(() -> {
+                    if (id <= 0) throw new BusinessException(ErrorCode.PARAM_INVALID);
+                    var existed = questionnaireMapper.selectById(id);
+                    if (existed == null) throw new BusinessException(ErrorCode.PARAM_INVALID, "问卷不存在");
+                    questionnaireMapper.updateMeta(id, existed.getTitle(), existed.getSubtitle(), "DRAFT", actorId);
+                    return 0;
+                })
+                .subscribeOn(Schedulers.boundedElastic())
+                .then();
     }
 
     private BusinessException resolveQuestionInsertException(Exception e) {

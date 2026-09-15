@@ -82,9 +82,11 @@ public class AuthWebFilter implements WebFilter {
                 || "/auth/login/email-code/verify".equals(path)
                 || "/auth/dev/email-code/test".equals(path)
                 || "/auth/dev/captcha/check".equals(path)
+                || "/auth/dev/token".equals(path)
                 || "/auth/dev/redis/info".equals(path)
                 || "/auth/refresh".equals(path)
                 || "/appeal/ban/submit".equals(path)
+                || path.startsWith("/assets/spine")
                 || path.startsWith("/actuator");
     }
 
