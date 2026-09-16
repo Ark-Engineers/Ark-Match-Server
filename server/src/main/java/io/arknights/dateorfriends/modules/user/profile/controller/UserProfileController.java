@@ -70,6 +70,9 @@ public class UserProfileController {
     public Mono<ApiResponse<UserProfileService.ProfileResponse>> updateMyProfile(@Valid @RequestBody UpdateProfileRequest req, ServerWebExchange exchange) {
         var principal = exchange.<io.arknights.dateorfriends.tools.jwt.JwtPrincipal>getAttribute(AuthWebFilter.ATTR_PRINCIPAL);
         if (principal == null) return Mono.error(new BusinessException(ErrorCode.UNAUTHORIZED));
+        if ("SUPER_ADMIN".equalsIgnoreCase(String.valueOf(principal.role()))) {
+            return Mono.error(new BusinessException(ErrorCode.FORBIDDEN, "超级管理员禁止修改个人资料"));
+        }
         var ip = IpUtils.resolveClientIp(exchange);
         return userProfileService.updateProfile(principal.userId(), ip, req).map(ApiResponse::ok);
     }

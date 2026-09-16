@@ -659,6 +659,26 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ApiResponseError'
+  /user/spine/list:
+    get:
+      tags: [User]
+      summary: 用户端-Spine 小人列表
+      description: 返回可用于联机/展示的 Spine 小人资源（由后台导入）
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseSpineOptionList'
+        '401':
+          description: 未登录或令牌无效
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseError'
   /user/questionnaire/current:
     get:
       tags: [User]
@@ -4814,6 +4834,34 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/MatchRecommendationItem'
+    SpineOption:
+      type: object
+      required: [assetKey, name, skelUrl]
+      properties:
+        assetKey:
+          type: string
+          description: Spine 资源键（.atlas/.skel 同名）
+        name:
+          type: string
+          description: 展示名称
+        skelUrl:
+          type: string
+          description: skel 文件公开访问地址（/assets/spine/...）
+    ApiResponseSpineOptionList:
+      type: object
+      required: [code, message, data]
+      properties:
+        code:
+          type: integer
+          format: int32
+          example: 0
+        message:
+          type: string
+          example: ok
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/SpineOption'
     UserQuestionnaireMeta:
       type: object
       required: [id, title]

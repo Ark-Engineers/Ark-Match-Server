@@ -86,6 +86,8 @@ public class AuthWebFilter implements WebFilter {
                 || "/auth/dev/redis/info".equals(path)
                 || "/auth/refresh".equals(path)
                 || "/appeal/ban/submit".equals(path)
+                || "/ws/online".equals(path)
+                || "/ws/online/ctrl".equals(path)
                 || path.startsWith("/assets/spine")
                 || path.startsWith("/actuator");
     }

@@ -694,6 +694,25 @@ public interface UserMapper {
     @Update("""
             UPDATE `user`
             SET
+              nickname = #{nickname}
+            WHERE id = #{id}
+              AND deleted = 0
+            """)
+    int updateNickname(@Param("id") long id, @Param("nickname") String nickname);
+
+    @Update("""
+            UPDATE `user`
+            SET
+              email = #{email},
+              email_verified_at = NOW()
+            WHERE id = #{id}
+              AND deleted = 0
+            """)
+    int updateEmail(@Param("id") long id, @Param("email") String email);
+
+    @Update("""
+            UPDATE `user`
+            SET
               password_hash = #{passwordHash},
               login_fail_count = 0,
               locked_until = NULL

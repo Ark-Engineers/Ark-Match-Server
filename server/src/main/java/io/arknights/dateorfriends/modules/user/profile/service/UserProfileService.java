@@ -43,6 +43,7 @@ public class UserProfileService {
             long userId,
             String account,
             String nickname,
+            String loginEmail,
             String avatarUrl,
             String avatarCharId,
             String avatarCharName,
@@ -169,11 +170,13 @@ public class UserProfileService {
         var qq = isOwner && profile != null ? contactAesService.decryptFromBase64(profile.getQqEnc()) : null;
         var wechat = isOwner && profile != null ? contactAesService.decryptFromBase64(profile.getWechatEnc()) : null;
         var email = isOwner && profile != null ? contactAesService.decryptFromBase64(profile.getEmailEnc()) : null;
+        var loginEmail = isOwner ? user.getEmail() : null;
 
         return new ProfileResponse(
                 user.getId(),
                 user.getAccount(),
                 user.getNickname(),
+                loginEmail,
                 user.getAvatarUrl(),
                 user.getAvatarCharId(),
                 user.getAvatarCharName(),

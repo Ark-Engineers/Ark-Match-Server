@@ -56,35 +56,54 @@ public class EmailCodeService {
     }
 
     public Mono<Void> sendRegisterCode(String email, String ip) {
-        return sendCode("register", email, ip, "注册验证码", "你的注册验证码为：%s\n有效期：5分钟\n如非本人操作请忽略。");
+        return sendCode("register", email, ip, "注册验证码", "你的注册验证码为：%s\n有效期：5分钟\n如非本人操作请忽略。", codeTtl, maxAttempts);
     }
 
     public Mono<Void> sendLoginCode(String email, String ip) {
-        return sendCode("login", email, ip, "登录验证码", "你的登录验证码为：%s\n有效期：5分钟\n如非本人操作请忽略。");
+        return sendCode("login", email, ip, "登录验证码", "你的登录验证码为：%s\n有效期：5分钟\n如非本人操作请忽略。", codeTtl, maxAttempts);
     }
 
     public Mono<Void> verifyRegisterCode(String email, String code, String ip) {
-        return verifyCode("register", email, code, ip);
+        return verifyCode("register", email, code, ip, maxAttempts);
     }
 
     public Mono<Void> verifyLoginCode(String email, String code, String ip) {
-        return verifyCode("login", email, code, ip);
+        return verifyCode("login", email, code, ip, maxAttempts);
+    }
+
+    private static final Duration CHANGE_CODE_TTL = Duration.ofMinutes(15);
+    private static final int CHANGE_MAX_ATTEMPTS = 3;
+
+    public Mono<Void> sendChangePasswordCode(String email, String ip) {
+        return sendCode("change_password", email, ip, "密码修改验证码", "你的密码修改验证码为：%s\n有效期：15分钟\n如非本人操作请忽略。", CHANGE_CODE_TTL, CHANGE_MAX_ATTEMPTS);
+    }
+
+    public Mono<Void> sendChangeEmailCode(String email, String ip) {
+        return sendCode("change_email", email, ip, "邮箱修改验证码", "你的邮箱修改验证码为：%s\n有效期：15分钟\n如非本人操作请忽略。", CHANGE_CODE_TTL, CHANGE_MAX_ATTEMPTS);
+    }
+
+    public Mono<Void> verifyChangePasswordCode(String email, String code, String ip) {
+        return verifyCode("change_password", email, code, ip, CHANGE_MAX_ATTEMPTS);
+    }
+
+    public Mono<Void> verifyChangeEmailCode(String email, String code, String ip) {
+        return verifyCode("change_email", email, code, ip, CHANGE_MAX_ATTEMPTS);
     }
 
     public record TestEmailCodeResponse(String code, long expiresInSeconds, long cooldownSeconds) {
     }
 
     public Mono<TestEmailCodeResponse> issueTestCode(String purpose, String email, String ip) {
-        return issueCode(purpose, email, ip)
+        return issueCode(purpose, email, ip, codeTtl, maxAttempts)
                 .map(code -> new TestEmailCodeResponse(code, codeTtl.toSeconds(), cooldownTtl.toSeconds()));
     }
 
-    private Mono<Void> sendCode(String purpose, String emailRaw, String ip, String subject, String bodyTpl) {
-        return issueCode(purpose, emailRaw, ip)
+    private Mono<Void> sendCode(String purpose, String emailRaw, String ip, String subject, String bodyTpl, Duration ttl, int maxAttempts) {
+        return issueCode(purpose, emailRaw, ip, ttl, maxAttempts)
                 .flatMap(code -> mailService.sendTextWithRetry(normalizeEmail(emailRaw), subject, bodyTpl.formatted(code)));
     }
 
-    private Mono<String> issueCode(String purpose, String emailRaw, String ip) {
+    private Mono<String> issueCode(String purpose, String emailRaw, String ip, Duration ttl, int maxAttempts) {
         var email = normalizeEmail(emailRaw);
         if (!isEmail(email)) {
             return Mono.error(new BusinessException(ErrorCode.PARAM_INVALID));
@@ -101,13 +120,13 @@ public class EmailCodeService {
                             .put(key, "salt", salt)
                             .then(redis.opsForHash().put(key, "hash", hash))
                             .then(redis.opsForHash().put(key, "fails", "0"))
-                            .then(redis.expire(key, codeTtl))
+                            .then(redis.expire(key, ttl))
                             .then(setCooldown(purpose, email))
                             .thenReturn(code);
                 }));
     }
 
-    private Mono<Void> verifyCode(String purpose, String emailRaw, String codeRaw, String ip) {
+    private Mono<Void> verifyCode(String purpose, String emailRaw, String codeRaw, String ip, int maxAttempts) {
         var email = normalizeEmail(emailRaw);
         var code = codeRaw == null ? "" : codeRaw.trim();
         if (!isEmail(email) || code.isBlank()) {
@@ -136,7 +155,7 @@ public class EmailCodeService {
                                                 .increment(key, "fails", 1)
                                                 .defaultIfEmpty(1L)
                                                 .flatMap(fails -> {
-                                                    if (fails >= maxAttempts) {
+                                                    if (fails >= Math.max(3, maxAttempts)) {
                                                         return redis.delete(key).then(Mono.error(new BusinessException(ErrorCode.EMAIL_CODE_TOO_MANY_ATTEMPTS)));
                                                     }
                                                     return Mono.error(new BusinessException(ErrorCode.EMAIL_CODE_INVALID));
