@@ -1,19 +1,25 @@
 package io.arknights.dateorfriends.modules.user.online.ws;
 
+import io.arknights.dateorfriends.modules.user.online.service.OnlineRoomService;
 import io.arknights.dateorfriends.tools.jwt.JwtPrincipal;
 import io.arknights.dateorfriends.tools.jwt.JwtService;
 import io.arknights.dateorfriends.tools.jwt.JwtTokenType;
 import io.arknights.dateorfriends.tools.security.token.RedisTokenStore;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.HexFormat;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import org.springframework.boot.json.JsonParser;
 import org.springframework.boot.json.JsonParserFactory;
+import org.springframework.boot.context.event.ApplicationReadyEvent;
+import org.springframework.context.event.EventListener;
 import org.springframework.stereotype.Component;
 import org.springframework.web.reactive.socket.CloseStatus;
 import org.springframework.web.reactive.socket.WebSocketHandler;
@@ -30,6 +36,7 @@ public class OnlineWebSocketHandlerV2 implements WebSocketHandler {
 
     private final JwtService jwtService;
     private final RedisTokenStore tokenStore;
+    private final OnlineRoomService onlineRoomService;
     private final JsonParser jsonParser = JsonParserFactory.getJsonParser();
 
     private static final int WORLD_W = 1920;
@@ -42,10 +49,46 @@ public class OnlineWebSocketHandlerV2 implements WebSocketHandler {
     private static final double SPEED_SHIFT = 800.0;
 
     private final Map<String, Room> rooms = new ConcurrentHashMap<>();
+    private final Map<String, RoomMeta> roomMetas = new ConcurrentHashMap<>();
 
-    public OnlineWebSocketHandlerV2(JwtService jwtService, RedisTokenStore tokenStore) {
+    public OnlineWebSocketHandlerV2(JwtService jwtService, RedisTokenStore tokenStore, OnlineRoomService onlineRoomService) {
         this.jwtService = jwtService;
         this.tokenStore = tokenStore;
+        this.onlineRoomService = onlineRoomService;
+        var now = System.currentTimeMillis();
+        var lobby = new RoomMeta("lobby", "大厅", true, "PUBLIC", 0, null, ConcurrentHashMap.newKeySet(), 0L, now, now);
+        roomMetas.put(lobby.roomId, lobby);
+    }
+
+    @EventListener(ApplicationReadyEvent.class)
+    public void onApplicationReady() {
+        onlineRoomService.loadAllMetas()
+                .doOnNext(this::reloadRoomMetasFromDb)
+                .subscribe();
+    }
+
+    public record RoomCard(
+            String roomId,
+            String name,
+            boolean online,
+            String permission,
+            int capacity,
+            int onlineCount,
+            boolean needPassword,
+            boolean canEnter,
+            String denyReason
+    ) {
+    }
+
+    public record CreateRoomRequest(
+            String roomId,
+            String name,
+            String permission,
+            int capacity,
+            String password,
+            List<Long> whitelistUserIds,
+            Boolean online
+    ) {
     }
 
     @Override
@@ -84,6 +127,7 @@ public class OnlineWebSocketHandlerV2 implements WebSocketHandler {
             var roomId = safeRoomId(roomRaw);
             var assetKey = String.valueOf(msg.getOrDefault("assetKey", ""));
             var nickname = String.valueOf(msg.getOrDefault("nickname", ""));
+            var password = String.valueOf(msg.getOrDefault("password", ""));
             if (roomId == null || assetKey == null || assetKey.isBlank()) {
                 return Mono.empty();
             }
@@ -91,7 +135,7 @@ public class OnlineWebSocketHandlerV2 implements WebSocketHandler {
 
             var resumeClientId = String.valueOf(msg.getOrDefault("clientId", "")).trim();
             var resumeKey = String.valueOf(msg.getOrDefault("resumeKey", "")).trim();
-            joinRoom(ctx, roomId, assetKey, nickname, resumeClientId, resumeKey);
+            joinRoom(ctx, roomId, assetKey, nickname, resumeClientId, resumeKey, password);
             return Mono.empty();
         }
         if ("input".equals(type)) {
@@ -130,12 +174,233 @@ public class OnlineWebSocketHandlerV2 implements WebSocketHandler {
             room.broadcastAll(toJson(Map.of("type", "host_fps", "fps", room.hostFps)));
             return Mono.empty();
         }
+        if ("leave".equals(type)) {
+            var roomId = ctx.roomId;
+            if (roomId == null) return Mono.empty();
+            var room = rooms.get(roomId);
+            if (room == null) return Mono.empty();
+            var clientId = ctx.clientId;
+            if (clientId == null || clientId.isBlank()) return Mono.empty();
+
+            room.players.remove(clientId);
+            room.broadcastAll(toJson(Map.of("type", "player_leave", "clientId", clientId)));
+
+            ctx.roomId = null;
+            ctx.slot = null;
+
+            if (room.hostClientId != null && room.hostClientId.equals(clientId)) {
+                room.hostClientId = room.pickNextHost();
+                room.broadcastAll(toJson(Map.of("type", "host_change", "hostClientId", room.hostClientId, "hostFps", room.hostFps)));
+            }
+
+            if (room.players.isEmpty()) {
+                room.stopTicker();
+                rooms.remove(roomId);
+            }
+            return Mono.empty();
+        }
+        if ("change_avatar".equals(type)) {
+            var roomId = ctx.roomId;
+            if (roomId == null) return Mono.empty();
+            var room = rooms.get(roomId);
+            if (room == null) return Mono.empty();
+            var slot = ctx.slot;
+            if (slot == null || slot.state == null) return Mono.empty();
+            var rawKey = String.valueOf(msg.getOrDefault("assetKey", "")).trim();
+            if (rawKey.isBlank()) return Mono.empty();
+            var safeKey = rawKey.replaceAll("[^a-zA-Z0-9_-]", "");
+            if (safeKey.isBlank() || safeKey.length() > 128) return Mono.empty();
+            slot.state.assetKey = safeKey;
+            room.broadcastAll(toJson(Map.of("type", "player_update", "player", stateToMap(slot.state))));
+            return Mono.empty();
+        }
+        if ("emote".equals(type)) {
+            var roomId = ctx.roomId;
+            if (roomId == null) return Mono.empty();
+            var room = rooms.get(roomId);
+            if (room == null) return Mono.empty();
+            if (ctx.slot == null || ctx.slot.state == null) return Mono.empty();
+            var targetId = String.valueOf(msg.getOrDefault("clientId", "")).trim();
+            var emote = String.valueOf(msg.getOrDefault("emote", "")).trim();
+            if (targetId.isBlank() || emote.isBlank()) return Mono.empty();
+            if (emote.length() > 32) emote = emote.substring(0, 32);
+            room.broadcastAll(toJson(Map.of("type", "emote", "clientId", targetId, "emote", emote)));
+            return Mono.empty();
+        }
         return Mono.empty();
     }
 
-    private void joinRoom(ConnCtx ctx, String roomId, String assetKey, String nickname, String resumeClientId, String resumeKey) {
+    public List<RoomCard> listRooms(JwtPrincipal principal) {
+        var keys = new ArrayList<>(roomMetas.keySet());
+        keys.sort(String::compareTo);
+        var result = new ArrayList<RoomCard>(keys.size());
+        var isAdmin = isAdminRole(principal.role());
+        for (var id : keys) {
+            var meta = roomMetas.get(id);
+            if (meta == null) continue;
+            var perm = safePermission(meta.permission);
+            var needPassword = "PASSWORD".equals(perm);
+            var room = rooms.get(meta.roomId);
+            var onlineCount = room == null ? 0 : room.connectedCount();
+            var canEnter = true;
+            String denyReason = null;
+            if (!meta.online) {
+                canEnter = false;
+                denyReason = "离线";
+            } else if (meta.capacity > 0 && onlineCount >= meta.capacity) {
+                canEnter = false;
+                denyReason = "已满";
+            } else if ("ADMIN_ONLY".equals(perm) && !isAdmin) {
+                canEnter = false;
+                denyReason = "仅管理员";
+            } else if ("WHITELIST".equals(perm)) {
+                if (meta.whitelist == null || (!meta.whitelist.contains(principal.userId()) && meta.creatorUserId != principal.userId())) {
+                    canEnter = false;
+                    denyReason = "无权限";
+                }
+            }
+            result.add(new RoomCard(meta.roomId, meta.name, meta.online, perm, meta.capacity, onlineCount, needPassword, canEnter, denyReason));
+        }
+        return result;
+    }
+
+    public Mono<RoomCard> createRoom(JwtPrincipal principal, CreateRoomRequest req) {
+        return onlineRoomService.createRoom(principal, req)
+                .map(res -> {
+                    upsertRoomMeta(res.meta());
+                    return res.card();
+                });
+    }
+
+    public Mono<Void> setRoomOnline(JwtPrincipal principal, String roomId, boolean online) {
+        return onlineRoomService.setRoomOnline(roomId, online)
+                .doOnSuccess(ignored -> {
+                    var id = safeRoomId(roomId);
+                    var meta = roomMetas.get(id);
+                    if (meta != null) {
+                        meta.online = online;
+                        meta.updatedAt = System.currentTimeMillis();
+                    }
+                    if (!online) {
+                        var room = rooms.remove(id);
+                        if (room != null) {
+                            room.broadcastAll(toJson(Map.of("type", "room_offline")));
+                            room.closeAll();
+                            room.stopTicker();
+                        }
+                    }
+                });
+    }
+
+    private void deny(ConnCtx ctx, String code, String message) {
+        if (ctx == null) return;
+        ctx.sink.tryEmitNext(toJson(Map.of("type", "error", "code", code, "message", message)));
+    }
+
+    private static boolean isAdminRole(String role) {
+        var r = String.valueOf(role == null ? "" : role).trim().toUpperCase();
+        return "ADMIN".equals(r) || "SUPER_ADMIN".equals(r);
+    }
+
+    private static String safePermission(String raw) {
+        var r = String.valueOf(raw == null ? "" : raw).trim().toUpperCase();
+        if ("ADMIN_ONLY".equals(r)) return "ADMIN_ONLY";
+        if ("PASSWORD".equals(r)) return "PASSWORD";
+        if ("WHITELIST".equals(r)) return "WHITELIST";
+        return "PUBLIC";
+    }
+
+    private static String hashText(String text) {
+        try {
+            var d = MessageDigest.getInstance("SHA-256");
+            var b = d.digest(String.valueOf(text == null ? "" : text).getBytes(StandardCharsets.UTF_8));
+            return HexFormat.of().formatHex(b);
+        } catch (Exception e) {
+            return "";
+        }
+    }
+
+    private void reloadRoomMetasFromDb(List<OnlineRoomService.RoomMetaData> metas) {
+        var next = new ConcurrentHashMap<String, RoomMeta>();
+        if (metas != null) {
+            for (var m : metas) {
+                if (m == null || m.roomId() == null || m.roomId().isBlank()) continue;
+                next.put(m.roomId(), toRoomMeta(m));
+            }
+        }
+        if (!next.containsKey("lobby")) {
+            var now = System.currentTimeMillis();
+            next.put("lobby", new RoomMeta("lobby", "大厅", true, "PUBLIC", 0, null, ConcurrentHashMap.newKeySet(), 0L, now, now));
+        }
+        roomMetas.clear();
+        roomMetas.putAll(next);
+    }
+
+    private void upsertRoomMeta(OnlineRoomService.RoomMetaData meta) {
+        if (meta == null || meta.roomId() == null || meta.roomId().isBlank()) return;
+        roomMetas.put(meta.roomId(), toRoomMeta(meta));
+    }
+
+    private RoomMeta toRoomMeta(OnlineRoomService.RoomMetaData meta) {
+        var wl = ConcurrentHashMap.<Long>newKeySet();
+        if (meta.whitelist() != null) wl.addAll(meta.whitelist());
+        var createdAt = meta.createdAt() > 0 ? meta.createdAt() : System.currentTimeMillis();
+        var updatedAt = meta.updatedAt() > 0 ? meta.updatedAt() : createdAt;
+        return new RoomMeta(
+                safeRoomId(meta.roomId()),
+                String.valueOf(meta.name() == null ? "" : meta.name()).trim(),
+                meta.online(),
+                safePermission(meta.permission()),
+                Math.max(0, meta.capacity()),
+                meta.passwordHash(),
+                wl,
+                meta.creatorUserId(),
+                createdAt,
+                updatedAt
+        );
+    }
+
+    private void joinRoom(ConnCtx ctx, String roomId, String assetKey, String nickname, String resumeClientId, String resumeKey, String password) {
         if (ctx.roomId != null) return;
+        var meta = roomMetas.get(roomId);
+        if (meta == null) {
+            deny(ctx, "ROOM_NOT_FOUND", "房间不存在");
+            return;
+        }
+        if (!meta.online) {
+            deny(ctx, "ROOM_OFFLINE", "房间离线");
+            return;
+        }
+        var perm = safePermission(meta.permission);
+        if ("ADMIN_ONLY".equals(perm) && !isAdminRole(ctx.principal.role())) {
+            deny(ctx, "ROOM_FORBIDDEN", "无权限进入");
+            return;
+        }
+        if ("WHITELIST".equals(perm)) {
+            if (meta.whitelist == null || (!meta.whitelist.contains(ctx.principal.userId()) && meta.creatorUserId != ctx.principal.userId())) {
+                deny(ctx, "ROOM_FORBIDDEN", "无权限进入");
+                return;
+            }
+        }
+        if ("PASSWORD".equals(perm)) {
+            var raw = String.valueOf(password == null ? "" : password).trim();
+            if (raw.isBlank()) {
+                deny(ctx, "ROOM_PASSWORD_REQUIRED", "需要房间密码");
+                return;
+            }
+            var hash = hashText(raw);
+            if (meta.passwordHash == null || !meta.passwordHash.equals(hash)) {
+                deny(ctx, "ROOM_PASSWORD_INVALID", "房间密码错误");
+                return;
+            }
+        }
+
         var room = rooms.computeIfAbsent(roomId, k -> new Room(roomId));
+        var cap = Math.max(0, meta.capacity);
+        if (cap > 0 && room.connectedCount() >= cap) {
+            deny(ctx, "ROOM_FULL", "房间已满");
+            return;
+        }
         room.startTicker();
 
         PlayerSlot slot = null;
@@ -156,12 +421,21 @@ public class OnlineWebSocketHandlerV2 implements WebSocketHandler {
             slot = new PlayerSlot(s, key);
             room.players.put(clientId, slot);
         } else {
+            if (slot.conn != null && slot.conn != ctx) {
+                try {
+                    slot.conn.sink.tryEmitComplete();
+                    slot.conn.session.close(CloseStatus.NORMAL).subscribe();
+                } catch (Exception e) {
+                }
+            }
             slot.state.assetKey = assetKey;
             slot.state.nickname = nickname;
             slot.state.inputX = 0;
             slot.state.inputY = 0;
             slot.state.inputShift = false;
         }
+
+        kickOtherUserPlayers(room, ctx.principal.userId(), slot.state.clientId);
 
         slot.conn = ctx;
         slot.disconnectedAt = 0L;
@@ -195,6 +469,36 @@ public class OnlineWebSocketHandlerV2 implements WebSocketHandler {
 
         if (!resumed) {
             room.broadcastExcept(slot.state.clientId, toJson(Map.of("type", "player_join", "player", stateToMap(slot.state))));
+        }
+    }
+
+    private void kickOtherUserPlayers(Room room, long userId, String keepClientId) {
+        var removed = new ArrayList<PlayerSlot>();
+        for (var e : room.players.entrySet()) {
+            var cid = e.getKey();
+            var slot = e.getValue();
+            if (slot == null || slot.state == null) continue;
+            if (slot.state.userId != userId) continue;
+            if (cid != null && cid.equals(keepClientId)) continue;
+            removed.add(slot);
+        }
+        for (var slot : removed) {
+            try {
+                room.players.remove(slot.state.clientId);
+            } catch (Exception e) {
+            }
+            try {
+                room.broadcastAll(toJson(Map.of("type", "player_leave", "clientId", slot.state.clientId)));
+            } catch (Exception e) {
+            }
+            if (slot.conn != null) {
+                try {
+                    slot.conn.sink.tryEmitComplete();
+                    slot.conn.session.close(CloseStatus.NORMAL).subscribe();
+                } catch (Exception e) {
+                }
+                slot.conn = null;
+            }
         }
     }
 
@@ -367,6 +671,44 @@ public class OnlineWebSocketHandlerV2 implements WebSocketHandler {
         return v;
     }
 
+    private static class RoomMeta {
+        private final String roomId;
+        private volatile String name;
+        private volatile boolean online;
+        private volatile String permission;
+        private volatile int capacity;
+        private volatile String passwordHash;
+        private final Set<Long> whitelist;
+        private final long creatorUserId;
+        private final long createdAt;
+        private volatile long updatedAt;
+
+        private RoomMeta(
+                String roomId,
+                String name,
+                boolean online,
+                String permission,
+                int capacity,
+                String passwordHash,
+                Set<Long> whitelist,
+                long creatorUserId,
+                long createdAt,
+                long updatedAt
+        ) {
+            this.roomId = roomId;
+            this.name = name;
+            this.online = online;
+            this.permission = permission;
+            this.capacity = capacity;
+            this.passwordHash = passwordHash;
+            this.whitelist = whitelist;
+            this.creatorUserId = creatorUserId;
+            var now = System.currentTimeMillis();
+            this.createdAt = createdAt > 0 ? createdAt : now;
+            this.updatedAt = updatedAt > 0 ? updatedAt : this.createdAt;
+        }
+    }
+
     private class Room {
         private final String roomId;
         private final Map<String, PlayerSlot> players = new ConcurrentHashMap<>();
@@ -392,6 +734,27 @@ public class OnlineWebSocketHandlerV2 implements WebSocketHandler {
                 if (slot == null || slot.conn == null) continue;
                 slot.conn.sink.tryEmitNext(json);
             }
+        }
+
+        private int connectedCount() {
+            var c = 0;
+            for (var slot : players.values()) {
+                if (slot != null && slot.conn != null) c += 1;
+            }
+            return c;
+        }
+
+        private void closeAll() {
+            for (var slot : players.values()) {
+                if (slot == null || slot.conn == null) continue;
+                try {
+                    slot.conn.sink.tryEmitComplete();
+                    slot.conn.session.close(CloseStatus.NORMAL).subscribe();
+                } catch (Exception e) {
+                }
+                slot.conn = null;
+            }
+            players.clear();
         }
 
         private PlayerSlot getConnected(String clientId) {
