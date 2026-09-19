@@ -24,10 +24,20 @@ CREATE TABLE `user_profile` (
   `wechat_enc` TEXT NULL COMMENT '微信密文（Base64）',
   `email_enc` TEXT NULL COMMENT '邮箱密文（Base64）',
 
+  `arknights_bound` TINYINT(1) NOT NULL DEFAULT 0 COMMENT '是否已绑定明日方舟：0=未绑定；1=已绑定',
+  `arknights_is_minor` TINYINT(1) NULL COMMENT '鹰角原始未成年状态：0=成年；1=未成年；NULL=未知',
+  `arknights_hg_id` VARCHAR(64) NULL COMMENT '森空岛ID（仅绑定用户本人可见）',
+  `arknights_uid` VARCHAR(64) NULL COMMENT '明日方舟游戏UID（字符串，避免精度丢失）',
+  `arknights_nickname` VARCHAR(128) NULL COMMENT '明日方舟游戏昵称（含编号后缀）',
+  `arknights_channel_name` VARCHAR(64) NULL COMMENT '明日方舟区服名称',
+  `arknights_bound_at` DATETIME NULL COMMENT '明日方舟最近一次绑定成功时间',
+
   `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
   `updated_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
 
   PRIMARY KEY (`user_id`),
+  UNIQUE KEY `uk_user_profile_arknights_uid` (`arknights_uid`),
+  KEY `idx_user_profile_arknights_bound` (`arknights_bound`),
   CONSTRAINT `fk_user_profile_user` FOREIGN KEY (`user_id`) REFERENCES `user` (`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='用户个人信息扩展表';
 

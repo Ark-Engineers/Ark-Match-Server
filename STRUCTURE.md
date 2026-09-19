@@ -56,6 +56,16 @@ dateOrFriends/
                   service/
                     impl/
                   mapper/
+                arknights/
+                  controller/
+                    ArknightsBindingController.java
+                  service/
+                    ArknightsBindingService.java
+                    impl/
+                      ArknightsBindingServiceImpl.java
+                  mapper/
+                    ArknightsBindingDO.java
+                    ArknightsBindingMapper.java
                 ping/
                   controller/
                   service/
@@ -116,6 +126,15 @@ dateOrFriends/
 - URL：`GET /user/ping`
 - Controller：`io.arknights.dateorfriends.modules.user.ping.controller.PingController`
 - Service：`io.arknights.dateorfriends.modules.user.ping.service.PingService`
+
+### 5.3 User Arknights Binding
+
+- URL：`GET /user/arknights/status`
+- URL：`POST /user/arknights/bind`
+- URL：`POST /user/arknights/unbind`
+- Controller：`io.arknights.dateorfriends.modules.user.arknights.controller.ArknightsBindingController`
+- Service：`io.arknights.dateorfriends.modules.user.arknights.service.ArknightsBindingService`
+- Mapper：`io.arknights.dateorfriends.modules.user.arknights.mapper.ArknightsBindingMapper`
 
 ## 6. 分层职责
 

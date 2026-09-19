@@ -28,6 +28,7 @@ public enum ErrorCode {
     EMAIL_CODE_COOLDOWN(2020, "请稍后再获取验证码"),
     RATE_LIMITED(2021, "请求过于频繁，请稍后再试"),
     EMAIL_SEND_FAILED(2022, "验证码发送失败，请稍后重试"),
+    ARKNIGHTS_ACCOUNT_ALREADY_BOUND(2023, "该明日方舟账号已被其他用户绑定"),
 
     TOKEN_EXPIRED(3000, "令牌已过期"),
     TOKEN_REVOKED(3001, "令牌已失效"),

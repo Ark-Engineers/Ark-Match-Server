@@ -152,6 +152,32 @@ java -jar server/target/server-0.0.1-SNAPSHOT.jar --server.port=0
 - User：
   - `GET /user/ping`（备注：用户端存活探针；需要登录）
 
+### 5.3 明日方舟绑定接口（需要登录）
+
+- `GET /user/arknights/status`
+  - 备注：查询当前用户的明日方舟绑定状态；仅返回当前用户资料；`isAdult` 由 `isMinor` 实时派生。
+- `POST /user/arknights/bind`
+  - 备注：保存官方授权页回传的明日方舟展示资料；超级管理员不可调用；同一游戏 UID 只能绑定一个本站用户。
+  - Body：
+
+```json
+{
+  "basic": {
+    "isMinor": false,
+    "hgId": "12345678"
+  },
+  "accountBinding": {
+    "uid": "123456789",
+    "nickName": "博士#1234",
+    "channelName": "官服"
+  }
+}
+```
+
+  - 关键约束：仅接收 `basic`、`accountBinding` 中的白名单展示字段；禁止提交、记录或返回账号密码、短信验证码、token、cred、signToken、dId 等第三方凭证。
+- `POST /user/arknights/unbind`
+  - 备注：解除当前用户绑定；超级管理员不可调用；解绑后清空全部明日方舟业务字段。
+
 ## 6. 权限与令牌机制
 
 - Access Token
@@ -180,6 +206,7 @@ java -jar server/target/server-0.0.1-SNAPSHOT.jar --server.port=0
   - `2002` 账号已锁定（连续 5 次失败锁定 15 分钟）
   - `2003` 账号已暂停使用
   - `2004` 账号已封禁
+  - `2023` 明日方舟账号已被其他用户绑定
   - `3001` 令牌已失效（黑名单/版本号变更）
 
 ## 8. 默认管理员初始化
@@ -452,6 +479,27 @@ app:
 | read | TINYINT(1) | 是否已读：0 未读；1 已读 |
 | read_at | DATETIME NULL | 阅读时间（未读为 NULL） |
 | created_at | DATETIME | 投递时间 |
+
+### 11.11 user_profile 明日方舟绑定字段
+
+- 基线 SQL：[user_profile.sql](file:///c:/Users/MrLee/Desktop/%E7%BD%97%E5%BE%B7%E4%B9%8B%E9%97%A8/%E7%A8%8B%E5%BA%8F/dateOrFriends/server/src/main/resources/sql/modules/user/user_profile.sql)
+- 增量 SQL：[arknights_binding.sql](file:///c:/Users/MrLee/Desktop/%E7%BD%97%E5%BE%B7%E4%B9%8B%E9%97%A8/%E7%A8%8B%E5%BA%8F/dateOrFriends/server/src/main/resources/sql/modules/user/arknights_binding.sql)
+
+| 字段 | 类型 | 备注 |
+|---|---|---|
+| arknights_bound | TINYINT(1) | 是否已绑定：0 未绑定；1 已绑定 |
+| arknights_is_minor | TINYINT(1) NULL | 官方原始未成年状态：0 成年；1 未成年；NULL 未知 |
+| arknights_hg_id | VARCHAR(64) NULL | 森空岛 ID；仅当前绑定用户可查询 |
+| arknights_uid | VARCHAR(64) NULL | 明日方舟游戏 UID；以字符串存储，避免精度丢失 |
+| arknights_nickname | VARCHAR(128) NULL | 明日方舟游戏昵称（含编号后缀） |
+| arknights_channel_name | VARCHAR(64) NULL | 明日方舟区服名称 |
+| arknights_bound_at | DATETIME NULL | 最近一次绑定成功时间 |
+
+常用索引（详见 SQL）：
+- `uk_user_profile_arknights_uid(arknights_uid)`：保证一个游戏 UID 仅能绑定一个本站用户。
+- `idx_user_profile_arknights_bound(arknights_bound)`：按绑定状态筛选。
+
+说明：`isAdult` 不落库，接口响应根据 `!isMinor` 实时派生。
 
 ## 12. 测试说明
 

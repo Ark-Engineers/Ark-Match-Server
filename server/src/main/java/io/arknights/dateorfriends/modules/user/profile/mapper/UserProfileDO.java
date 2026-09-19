@@ -18,6 +18,13 @@ public class UserProfileDO {
     private String qqEnc;
     private String wechatEnc;
     private String emailEnc;
+    private Integer arknightsBound;
+    private Integer arknightsIsMinor;
+    private String arknightsHgId;
+    private String arknightsUid;
+    private String arknightsNickname;
+    private String arknightsChannelName;
+    private LocalDateTime arknightsBoundAt;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
 }

@@ -1,7 +1,6 @@
 package io.arknights.dateorfriends.modules.user.profile.controller;
 
 import io.arknights.dateorfriends.modules.user.profile.service.UserProfileService;
-import io.arknights.dateorfriends.modules.user.profile.service.ArknightsAvatarService;
 import io.arknights.dateorfriends.tools.security.AuthWebFilter;
 import io.arknights.dateorfriends.tools.web.ApiResponse;
 import io.arknights.dateorfriends.tools.web.BusinessException;
@@ -24,11 +23,9 @@ import reactor.core.publisher.Mono;
 public class UserProfileController {
 
     private final UserProfileService userProfileService;
-    private final ArknightsAvatarService arknightsAvatarService;
 
-    public UserProfileController(UserProfileService userProfileService, ArknightsAvatarService arknightsAvatarService) {
+    public UserProfileController(UserProfileService userProfileService) {
         this.userProfileService = userProfileService;
-        this.arknightsAvatarService = arknightsAvatarService;
     }
 
     public record UpdateProfileRequest(
@@ -57,13 +54,6 @@ public class UserProfileController {
         var principal = exchange.<io.arknights.dateorfriends.tools.jwt.JwtPrincipal>getAttribute(AuthWebFilter.ATTR_PRINCIPAL);
         if (principal == null) return Mono.error(new BusinessException(ErrorCode.UNAUTHORIZED));
         return userProfileService.getProfile(principal.userId(), userId).map(ApiResponse::ok);
-    }
-
-    @GetMapping("/avatar-options")
-    public Mono<ApiResponse<List<ArknightsAvatarService.AvatarOption>>> listAvatarOptions(ServerWebExchange exchange) {
-        var principal = exchange.<io.arknights.dateorfriends.tools.jwt.JwtPrincipal>getAttribute(AuthWebFilter.ATTR_PRINCIPAL);
-        if (principal == null) return Mono.error(new BusinessException(ErrorCode.UNAUTHORIZED));
-        return arknightsAvatarService.listOptions().map(ApiResponse::ok);
     }
 
     @PutMapping

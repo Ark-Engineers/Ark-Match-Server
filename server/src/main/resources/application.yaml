@@ -4,7 +4,7 @@ spring:
 
   profiles:
     # 默认启用开发环境配置（对应 application-dev.yaml）
-    active: chenServer
+    active: chen
 
   main:
     # 允许循环依赖（建议仅开发阶段使用；后续可通过拆分依赖/调整设计移除）
