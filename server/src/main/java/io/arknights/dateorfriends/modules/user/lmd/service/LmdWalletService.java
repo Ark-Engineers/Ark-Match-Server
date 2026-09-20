@@ -72,7 +72,8 @@ public class LmdWalletService {
         }
     }
 
-    private ChangeResult applyCredit(
+    /** 供其他模块在自有 SqlSession 事务内记账（如赛马下注扣款/中奖入账/关闭退款）；amount 正=入账，负=出账 */
+    public ChangeResult applyCredit(
             SqlSession session,
             long userId,
             long amount,

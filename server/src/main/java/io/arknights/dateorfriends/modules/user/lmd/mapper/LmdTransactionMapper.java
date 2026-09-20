@@ -183,6 +183,17 @@ public interface LmdTransactionMapper {
     long sumByUser(@Param("userId") long userId);
 
     @Select("""
+            SELECT COALESCE(SUM(amount), 0)
+            FROM `lmd_transaction`
+            WHERE type = #{type} AND ref_type = #{refType} AND ref_id = #{refId}
+            """)
+    long sumByTypeAndRef(
+            @Param("type") String type,
+            @Param("refType") String refType,
+            @Param("refId") long refId
+    );
+
+    @Select("""
             SELECT
               w.user_id AS userId,
               w.balance AS balance,

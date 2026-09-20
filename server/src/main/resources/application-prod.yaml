@@ -81,6 +81,12 @@ app:
     sign-secret: ${LMD_SIGN_SECRET:}
     sign-ts-window-seconds: 300
     verify-cron: "0 30 4 * * ?"
+  race:
+    # 生产环境必须通过环境变量注入 Base64 编码的 32 字节密钥；不配置则启动失败（fail-closed）
+    secret: ${RACE_SECRET:}
+    secret-required: true
+    scheduler-enabled: true
+    tick-fixed-delay-ms: 1000
   admin:
     bootstrap:
       super-account: superadmin

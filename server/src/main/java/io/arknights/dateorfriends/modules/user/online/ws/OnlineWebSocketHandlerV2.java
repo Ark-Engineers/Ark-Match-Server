@@ -630,6 +630,37 @@ public class OnlineWebSocketHandlerV2 implements WebSocketHandler {
                 .replace("\t", "\\t");
     }
 
+    // ---------- 赛马模式外部广播接口 ----------
+
+    public boolean isUserInRoom(String roomId, long userId) {
+        if (roomId == null) return false;
+        var room = rooms.get(roomId);
+        if (room == null) return false;
+        for (var slot : room.players.values()) {
+            if (slot != null && slot.state != null && slot.state.userId == userId && slot.conn != null) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    public void broadcastToRoom(String roomId, String json) {
+        if (roomId == null) return;
+        var room = rooms.get(roomId);
+        if (room != null) room.broadcastAll(json);
+    }
+
+    public void sendToUserInRoom(String roomId, long userId, String json) {
+        if (roomId == null) return;
+        var room = rooms.get(roomId);
+        if (room == null) return;
+        for (var slot : room.players.values()) {
+            if (slot != null && slot.state != null && slot.state.userId == userId && slot.conn != null) {
+                slot.conn.sink.tryEmitNext(json);
+            }
+        }
+    }
+
     private double toDouble(Object v, double fallback) {
         if (v == null) return fallback;
         try {

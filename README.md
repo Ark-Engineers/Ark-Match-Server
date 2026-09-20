@@ -531,7 +531,7 @@ app:
 | user_id | BIGINT | 用户ID（user.id） |
 | amount | BIGINT | 变动金额（正=入账，负=出账；不为 0） |
 | balance_after | BIGINT | 变动后余额（账面校验依据） |
-| type | VARCHAR(32) | 流水类型（MAIL_CLAIM 邮件领取 / ADMIN_ADJUST 管理员调整） |
+| type | VARCHAR(32) | 流水类型（MAIL_CLAIM 邮件领取 / ADMIN_ADJUST 管理员调整 / RACE_BET 赛马下注 / RACE_PAYOUT 赛马奖金 / RACE_REFUND 赛马退款） |
 | ref_type | VARCHAR(32) NULL | 关联对象类型（如 NOTIFICATION） |
 | ref_id | BIGINT NULL | 关联对象ID（如 site_notification.id） |
 | description | VARCHAR(255) NULL | 描述（管理员调整时必填原因） |
@@ -562,10 +562,121 @@ app:
 常用索引（详见 SQL）：
 - `uk_lmd_mail_claim_notif_user(notification_id, user_id)`：保证同一用户对同一通知仅能领取一次（幂等兜底）。
 
+### 11.15 horse_race（赛马模式实例）
+
+- SQL：[horse_race.sql](file:///c:/Users/MrLee/Desktop/%E7%BD%97%E5%BE%B7%E4%B9%8B%E9%97%A8/%E7%A8%8B%E5%BA%8F/dateOrFriends/server/src/main/resources/sql/modules/user/horse_race.sql)
+- 增量 SQL（服务器已有库执行）：[2026-09-20_horse_race.sql](file:///c:/Users/MrLee/Desktop/%E7%BD%97%E5%BE%B7%E4%B9%8B%E9%97%A8/%E7%A8%8B%E5%BA%8F/dateOrFriends/server/src/main/resources/sql/incremental/2026-09-20_horse_race.sql)
+
+| 字段 | 类型 | 备注 |
+|---|---|---|
+| id | BIGINT | 主键，自增 |
+| room_id | VARCHAR(32) | 联机房间ID（online_room.room_id；服务层校验存在性，每房间仅一个 ACTIVE 实例） |
+| name | VARCHAR(64) NULL | 模式名称（展示用，可为空） |
+| status | VARCHAR(16) | 模式状态：ACTIVE=进行中；CLOSED=已结束/已关闭 |
+| session_type | TINYINT | 场次类型：1=一次性；2=限定场次数量；3=无限循环 |
+| total_rounds | INT | 总场次数（session_type=1 恒为1；=2 为配置值；=3 恒为0表示不限） |
+| participant_mode | TINYINT | 参赛对象生成规则：1=手动选择；2=随机生成 |
+| bet_duration_seconds | INT | 单轮竞猜周期（秒；>=60） |
+| created_by | BIGINT | 创建人ID（管理员 user.id） |
+| created_at | DATETIME | 创建时间 |
+| updated_at | DATETIME | 更新时间 |
+
+常用索引（详见 SQL）：
+- `idx_horse_race_room(room_id, status)`：按房间+状态查当前实例。
+- `idx_horse_race_status(status)`：调度器按状态扫描。
+
+### 11.16 horse_race_participant（赛马参赛对象）
+
+- SQL：[horse_race.sql](file:///c:/Users/MrLee/Desktop/%E7%BD%97%E5%BE%B7%E4%B9%8B%E9%97%A8/%E7%A8%8B%E5%BA%8F/dateOrFriends/server/src/main/resources/sql/modules/user/horse_race.sql)
+
+| 字段 | 类型 | 备注 |
+|---|---|---|
+| id | BIGINT | 主键，自增 |
+| race_id | BIGINT | 模式ID（horse_race.id） |
+| sort_no | INT | 道次（1-5） |
+| spine_asset_id | BIGINT | Spine资产ID（spine_asset.id） |
+| asset_key | VARCHAR(64) | 资源标识（冗余，前端加载用） |
+| name | VARCHAR(128) NULL | 展示名称（可为空） |
+| type | TINYINT | 对象类型（冗余自 spine_asset.type）：2=敌人；3=Boss |
+| created_at | DATETIME | 创建时间 |
+
+常用索引（详见 SQL）：
+- `uk_horse_race_participant_race_sort(race_id, sort_no)`：同模式内道次唯一。
+- `uk_horse_race_participant_race_asset(race_id, spine_asset_id)`：同模式内参赛对象不重复。
+
+### 11.17 horse_race_round（赛马轮次）
+
+- SQL：[horse_race.sql](file:///c:/Users/MrLee/Desktop/%E7%BD%97%E5%BE%B7%E4%B9%8B%E9%97%A8/%E7%A8%8B%E5%BA%8F/dateOrFriends/server/src/main/resources/sql/modules/user/horse_race.sql)
+
+| 字段 | 类型 | 备注 |
+|---|---|---|
+| id | BIGINT | 主键，自增 |
+| race_id | BIGINT | 模式ID（horse_race.id） |
+| round_no | INT | 场次序号（从1递增） |
+| status | VARCHAR(16) | 轮次状态：BETTING=竞猜中；RACING=比赛中；PODIUM=领奖台；FINISHED=已结束 |
+| bet_start_at | DATETIME | 竞猜开始时间 |
+| bet_end_at | DATETIME | 竞猜结束时间（比赛前30秒关闭通道：race_start_at=bet_end_at+30秒） |
+| race_start_at | DATETIME | 比赛开始时间（前端动画起点，高精度时间戳同步基准） |
+| podium_end_at | DATETIME | 领奖台结束时间（race_start_at+120秒） |
+| seed | VARCHAR(32) NULL | 动画随机种子（hex；比赛开始前30秒生成并广播，赛前为NULL） |
+| result_cipher | TEXT NULL | 名次结果密文（AES-GCM；仅服务端解密，任何阶段不传输前端） |
+| result_commit | VARCHAR(64) NULL | 名次承诺（SHA-256(result_json\|seed\|round_id)，赛后公平性核验） |
+| total_pool | BIGINT | 本场竞猜总池（=本场全部下注之和） |
+| bet_count | INT | 下注笔数 |
+| paid_total | BIGINT | 实际发放奖金总额（无人中奖的份额不发放，<=total_pool） |
+| settled_at | DATETIME NULL | 结算完成时间 |
+| created_at | DATETIME | 创建时间 |
+| updated_at | DATETIME | 更新时间 |
+
+常用索引（详见 SQL）：
+- `uk_horse_race_round_no(race_id, round_no)`：同模式内场次序号唯一。
+- `idx_horse_race_round_status(status)`：调度器按状态扫描。
+
+### 11.18 horse_race_bet（赛马下注明细）
+
+- SQL：[horse_race.sql](file:///c:/Users/MrLee/Desktop/%E7%BD%97%E5%BE%B7%E4%B9%8B%E9%97%A8/%E7%A8%8B%E5%BA%8F/dateOrFriends/server/src/main/resources/sql/modules/user/horse_race.sql)
+
+| 字段 | 类型 | 备注 |
+|---|---|---|
+| id | BIGINT | 主键，自增 |
+| round_id | BIGINT | 轮次ID（horse_race_round.id） |
+| race_id | BIGINT | 模式ID（冗余，便于按模式统计） |
+| user_id | BIGINT | 下注用户ID（user.id） |
+| participant_id | BIGINT | 下注对象ID（horse_race_participant.id） |
+| amount | BIGINT | 下注金额（龙门币，>=1；单用户单场总额100-3000由服务层校验） |
+| status | VARCHAR(16) | 状态：ACTIVE=有效；WON=中奖；LOST=未中；REFUNDED=已退款 |
+| payout | BIGINT NULL | 中奖奖金（status=WON 时非空） |
+| created_at | DATETIME | 下注时间 |
+| updated_at | DATETIME | 更新时间 |
+
+常用索引（详见 SQL）：
+- `idx_horse_race_bet_round(round_id, status)`：按轮次结算。
+- `idx_horse_race_bet_user(user_id, round_id)`：按用户查单场下注。
+
+### 11.19 horse_race_settlement（赛马结算台账）
+
+- SQL：[horse_race.sql](file:///c:/Users/MrLee/Desktop/%E7%BD%97%E5%BE%B7%E4%B9%8B%E9%97%A8/%E7%A8%8B%E5%BA%8F/dateOrFriends/server/src/main/resources/sql/modules/user/horse_race.sql)
+
+| 字段 | 类型 | 备注 |
+|---|---|---|
+| id | BIGINT | 主键，自增 |
+| round_id | BIGINT | 轮次ID（horse_race_round.id） |
+| user_id | BIGINT | 中奖用户ID（user.id） |
+| participant_id | BIGINT | 中奖对象ID（horse_race_participant.id） |
+| rank_no | TINYINT | 名次（1/2/3） |
+| bet_amount | BIGINT | 该用户在该对象上的下注总额 |
+| payout | BIGINT | 实际发放奖金（平分后金额） |
+| created_at | DATETIME | 结算时间 |
+
+常用索引（详见 SQL）：
+- `uk_horse_race_settlement(round_id, user_id, participant_id)`：同轮次同用户同对象仅一条。
+
 ## 12. 测试说明
 
-- 按当前约定：项目不提交测试代码与测试依赖
-- 如后续需要补齐自动化测试，再新增 `server/src/test` 目录并恢复测试依赖
+- 测试目录：`server/src/test`（依赖 `spring-boot-starter-test`，仅 test scope）
+- 纯算法测试（无需数据库，`mvn test -Dtest='RaceSimConsistencyTest,RaceSimulatorRandomTest'`）：
+  - `RaceSimConsistencyTest`：Java 与前端 TS 模拟器 100 个种子逐位一致（冲线顺序/冲线tick/采样点 double 精确相等；比对数据由 `arkMatchWeb/scripts/raceSimCrossCheck.mjs` 生成）
+  - `RaceSimulatorRandomTest`：120 场拒绝采样必成功且仿真名次与预生成名次一致；100 场速度限定区间与 51~59 秒完赛
 
 ## 13. 龙门币系统（LMD）
 
@@ -610,3 +721,56 @@ app:
 - 请求溯源：`/user/lmd/**`、`/admin/lmd/**` 请求自动分配 `X-Trace-Id`（TraceWebFilter），流水与领取记录落库 trace_id + 来源 IP，可逐笔追溯。
 - 幂等兜底：`lmd_mail_claim` 唯一键（notification_id, user_id）+ 事务内重复领取检测，杜绝并发重复入账。
 - 一致性：余额更新、流水插入、领取记录、已领取标记在同一数据库事务（SqlSession 手动事务）内提交，任一失败整体回滚。
+
+## 14. 赛马竞猜系统（Horse Race）
+
+联机房间（/ws/online）内的竞猜玩法：管理员在房间创建赛马模式，房内玩家用龙门币下注 5 名敌人/Boss 参赛者的名次，赛后按 60/30/10 分成自动结算并通知。
+
+### 14.1 功能概览
+
+- 权限与配置：仅管理员可创建/关闭；每房间同一时间仅一个进行中实例；竞猜开始/结束时间可配置且间隔 >= 60 秒；场次类型三种（一次性/限定场次数量/无限循环）；参赛对象支持手动选择 5 名或从敌人/Boss 资产随机 5 名。
+- 下注：仅房间内成员、仅龙门币；单用户单场总额 100~3000，可为不同参赛者分别下注；普通敌人可重复下注，Boss 不可重复下注；比赛开始前 30 秒自动关闭下注通道；奖池实时汇总并全房间广播。
+- 公平性：每轮名次在比赛开始前由服务端 `SecureRandom` 独立生成，仅以 AES-256-GCM 密文落库并附 SHA-256 承诺，任何阶段不传输前端；前端只收到 8 位 hex 动画种子与开赛时间戳，用与后端逐位一致的确定性模拟器（mulberry32 + 拒绝采样，见 `RaceSimulator.java` / 前端 `utils/raceSim.ts`）重建 60 秒动画，冲线名次与后端名次 100% 一致；参赛者速度限定区间内随机（BASE_SPEED×[1.03,1.15]×[0.98,1.02]），51~59 秒陆续冲线。
+- 结算：第一名 60%、第二名 30%、第三名 10%；同对象多人中奖平均分配，余数按最早下注顺序分配；无人中奖的份额不发放；全部走龙门币整数运算，无浮点误差。
+- 赛后：不自动退出场景，广播名次生成领奖台（1/2/3 站位）持续 1 分钟，支持主动提前退出；系统通知每个参与者本人结果与奖金金额，奖金自动入账。
+- 双向校验：结算台账（horse_race_settlement）与龙门币流水（RACE_BET/RACE_PAYOUT/RACE_REFUND）逐轮对账，管理端可手动触发、结算时自动执行。
+
+### 14.2 配置
+
+```yaml
+app:
+  race:
+    secret: ${RACE_SECRET:}          # Base64 编码的 32 字节 AES 密钥；未配置时回退 sha256(app.verify.secret)（仅开发环境）
+    secret-required: true            # 生产必须显式配置（fail-closed），缺失时启动失败
+    scheduler-enabled: true          # 轮次流转调度器开关
+    tick-fixed-delay-ms: 1000        # 调度器扫描间隔
+```
+
+### 14.3 用户端接口（/user/online/race，需登录）
+
+- `GET /user/online/race/state?roomId=`：查询房间当前赛马状态（模式/轮次/参赛名单/本人下注/总额区间/服务器时间戳）
+- `POST /user/online/race/bet`：下注（body: roomId / participantId / amount；Redis 限流 12 次/分钟；校验在房内、阶段 BETTING、总额区间、Boss 去重）
+
+### 14.4 管理端接口（/admin/online/race，仅 ADMIN/SUPER_ADMIN）
+
+- `GET /admin/online/race/catalog`：可参赛对象目录（敌人/Boss spine 资产）
+- `GET /admin/online/race/list`：进行中模式概览（含当前轮次与参赛数）
+- `POST /admin/online/race/create`：创建（房间/名称/场次类型/场次数/参赛模式/5 名对象/起止时间毫秒时间戳；`sessionType=3` 无限循环时无需指定起止时间，创建后立即开始，单轮竞猜周期默认 120 秒）
+- `POST /admin/online/race/{id}/close`：关闭模式（未结算下注自动退款）
+- `GET /admin/online/race/{id}`：模式详情（参赛名单 + 全部轮次）
+- `POST /admin/online/race/round/{roundId}/verify`：触发单轮双向台账校验
+
+### 14.5 WebSocket 广播（房间内）
+
+- `race_update`：模式/轮次状态变化，前端收到后重新拉取状态
+- `race_pool_update`：奖池实时汇总（roundId / totalPool）
+- `race_start`：开赛（roundId / roundNo / seed / raceStartAt / durationMs）
+- `race_result`：结算结果（roundId / roundNo / ranking 参赛对象ID数组 / totalPool / paidTotal）
+- `race_my_result`：定向推送本人结果（roundId / roundNo / payout / betTotal / wins）
+
+### 14.6 安全机制
+
+- 鉴权：`/user/online/race/**` 仅限登录用户本人操作；`/admin/online/race/**` 走全局 `AuthWebFilter` 仅限 ADMIN/SUPER_ADMIN；下注必须为房间在线成员（服务端按 WS 连接校验）。
+- 频率限制：下注接口 Redis 滑动窗口限流（单用户 12 次/分钟）。
+- 公平性：名次结果密文 + SHA-256 承诺双保险，赛后可用 `seed / result_cipher / result_commit` 核验未被篡改；动画种子与名次一一对应（拒绝采样保证），前端无法从种子反推名次（名次信息仅密文落库）。
+- 一致性：下注（扣款+注单+奖池）与结算（解密+分成+入账+台账+状态）均在 SqlSession 手动事务内提交，轮次行 `SELECT ... FOR UPDATE` 串行化，任一失败整体回滚。

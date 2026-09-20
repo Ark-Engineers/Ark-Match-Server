@@ -71,6 +71,9 @@ dateOrFriends/
                   service/
                 online/
                   controller/
+                  race/
+                    controller/
+                      AdminRaceController.java
                 permission/
                   controller/
                   mapper/
@@ -147,6 +150,26 @@ dateOrFriends/
                   mapper/
                   service/
                   ws/
+                  race/
+                    controller/
+                      UserRaceController.java
+                    mapper/
+                      RaceDO.java
+                      RaceMapper.java
+                      RaceParticipantDO.java
+                      RaceParticipantMapper.java
+                      RaceRoundDO.java
+                      RaceRoundMapper.java
+                      RaceBetDO.java
+                      RaceBetMapper.java
+                      RaceSettlementDO.java
+                      RaceSettlementMapper.java
+                    service/
+                      RaceEngineService.java
+                      RaceResultCrypto.java
+                      RaceScheduler.java
+                      RaceSimulator.java
+                      RaceVerifyService.java
                 ping/
                   controller/
                   service/
@@ -175,6 +198,7 @@ dateOrFriends/
           sql/
             README.md
             incremental/
+              2026-09-20_horse_race.sql
               2026-09-20_lmd_wallet.sql
               2026-09-20_spine_type.sql
             modules/
@@ -189,6 +213,7 @@ dateOrFriends/
               user/
                 arknights_binding.sql
                 ban_appeal.sql
+                horse_race.sql
                 lmd_wallet.sql
                 notification.sql
                 online_room.sql
@@ -196,6 +221,16 @@ dateOrFriends/
                 user_avatar.sql
                 user_profile.sql
                 users.sql
+      test/
+        java/
+          io/arknights/dateorfriends/
+            modules/user/online/race/
+              service/
+                RaceSimConsistencyTest.java
+                RaceSimulatorRandomTest.java
+        resources/
+          race/
+            race-sim-js-100.json
 ```
 
 ## 3. 包命名约定

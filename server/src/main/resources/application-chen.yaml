@@ -87,6 +87,11 @@ app:
     sign-ts-window-seconds: 300
     # 每日自动账面校验（cron）
     verify-cron: "0 30 4 * * ?"
+  race:
+    # 赛马名次加密密钥：Base64 编码的 32 字节密钥；未配置时回退 sha256(app.verify.secret)（仅开发环境）
+    secret: ${RACE_SECRET:}
+    scheduler-enabled: true
+    tick-fixed-delay-ms: 1000
   admin:
     bootstrap:
       super-account: superadmin

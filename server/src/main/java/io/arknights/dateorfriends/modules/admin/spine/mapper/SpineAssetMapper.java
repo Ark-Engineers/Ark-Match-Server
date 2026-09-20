@@ -74,4 +74,18 @@ public interface SpineAssetMapper {
 
     @Delete("DELETE FROM spine_asset WHERE id=#{id}")
     int deleteAsset(@Param("id") long id);
+
+    @Select("""
+            <script>
+            SELECT *
+            FROM spine_asset
+            WHERE type IN
+            <foreach collection="types" item="t" open="(" separator="," close=")">
+              #{t}
+            </foreach>
+            ORDER BY type DESC, updated_at DESC
+            LIMIT #{limit}
+            </script>
+            """)
+    List<SpineAssetDO> listByTypes(@Param("types") List<Integer> types, @Param("limit") int limit);
 }
