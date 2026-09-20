@@ -11,12 +11,17 @@
 ```text
 server/src/main/resources/sql/
   README.md
+  incremental/
+    YYYY-MM-DD_<feature>.sql      # 增量脚本：已有库的 ALTER/建表变更，单独成文件，不混入模块全量脚本
   modules/
     admin/
       <feature>.sql
     user/
       <feature>.sql
 ```
+
+- 全量脚本（`modules/**`）：DROP+CREATE 完整建表，供新库从零初始化（`modules/all_in_one.sql` 汇总）。
+- 增量脚本（`incremental/`）：已上线数据库的字段/表变更（ALTER/ADD COLUMN/CREATE TABLE IF NOT EXISTS），文件名带日期；上线时由运维在服务器手动执行一次。
 
 ## 3. 文件命名
 

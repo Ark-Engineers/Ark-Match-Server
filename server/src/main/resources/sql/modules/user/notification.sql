@@ -16,6 +16,8 @@ CREATE TABLE `site_notification` (
   `level` ENUM('NORMAL','IMPORTANT') NOT NULL DEFAULT 'NORMAL' COMMENT '等级：NORMAL 普通；IMPORTANT 重要',
   `link_url` VARCHAR(512) NULL COMMENT '跳转链接（站内路由/外链）',
   `payload_json` JSON NULL COMMENT '结构化扩展数据（前端可按 type 解析）',
+  `lmd_amount` BIGINT NOT NULL DEFAULT 0 COMMENT '龙门币奖励额度（0=无奖励）',
+  `lmd_claim_expire_at` DATETIME NULL COMMENT '龙门币领取截止时间（NULL=永久有效）',
 
   `status` ENUM('SENT','OFFLINE') NOT NULL DEFAULT 'SENT' COMMENT '状态：SENT 已发送；OFFLINE 下线/撤回',
   `expire_at` DATETIME NULL COMMENT '过期时间（NULL 表示不过期）',
@@ -42,6 +44,8 @@ CREATE TABLE `site_notification_user` (
 
   `read` TINYINT(1) NOT NULL DEFAULT 0 COMMENT '是否已读：0 未读；1 已读',
   `read_at` DATETIME NULL COMMENT '阅读时间（未读为 NULL）',
+  `claimed` TINYINT(1) NOT NULL DEFAULT 0 COMMENT '是否已领取龙门币：0 未领取；1 已领取',
+  `claimed_at` DATETIME NULL COMMENT '龙门币领取时间（未领取为 NULL）',
 
   `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '投递时间',
 

@@ -62,20 +62,22 @@ public class AdminSpineController {
             @RequestPart("png") List<FilePart> png,
             @RequestPart(value = "extra", required = false) List<FilePart> extra,
             @RequestPart(value = "name", required = false) @Size(max = 128) String name,
+            @RequestPart(value = "type", required = false) String type,
             ServerWebExchange exchange
     ) {
         var principal = requirePrincipal(exchange);
-        return spineAssetService.create(principal.userId(), name, atlas, skel, png, extra).map(ApiResponse::ok);
+        return spineAssetService.create(principal.userId(), name, type, atlas, skel, png, extra).map(ApiResponse::ok);
     }
 
     @PostMapping(value = "/import-zip", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public Mono<ApiResponse<SpineAssetService.DetailResponse>> importZip(
             @RequestPart("zip") FilePart zip,
             @RequestPart(value = "name", required = false) @Size(max = 128) String name,
+            @RequestPart(value = "type", required = false) String type,
             ServerWebExchange exchange
     ) {
         var principal = requirePrincipal(exchange);
-        return spineAssetService.createFromZip(principal.userId(), name, zip).map(ApiResponse::ok);
+        return spineAssetService.createFromZip(principal.userId(), name, type, zip).map(ApiResponse::ok);
     }
 
     @PostMapping(value = "/{id}/update", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
@@ -87,13 +89,14 @@ public class AdminSpineController {
             @RequestPart(value = "png", required = false) List<FilePart> png,
             @RequestPart(value = "extra", required = false) List<FilePart> extra,
             @RequestPart(value = "name", required = false) @Size(max = 128) String name,
+            @RequestPart(value = "type", required = false) String type,
             ServerWebExchange exchange
     ) {
         var principal = requirePrincipal(exchange);
         if (zip != null) {
-            return spineAssetService.updateFromZip(principal.userId(), id, name, zip).map(ApiResponse::ok);
+            return spineAssetService.updateFromZip(principal.userId(), id, name, type, zip).map(ApiResponse::ok);
         }
-        return spineAssetService.update(principal.userId(), id, name, atlas, skel, png, extra).map(ApiResponse::ok);
+        return spineAssetService.update(principal.userId(), id, name, type, atlas, skel, png, extra).map(ApiResponse::ok);
     }
 
     @DeleteMapping("/{id}")

@@ -81,6 +81,12 @@ app:
         - admin@admin.com
       expire-sweep-fixed-delay-ms: 60000
       sync-active-bans-fixed-delay-ms: 300000
+  lmd:
+    # 龙门币写操作 HMAC 签名密钥（须与前端 VITE_LMD_SIGN_SECRET 一致）
+    sign-secret: ${LMD_SIGN_SECRET:dev-lmd-sign-secret-change-me}
+    sign-ts-window-seconds: 300
+    # 每日自动账面校验（cron）
+    verify-cron: "0 30 4 * * ?"
   admin:
     bootstrap:
       super-account: superadmin

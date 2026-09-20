@@ -30,6 +30,16 @@ public enum ErrorCode {
     EMAIL_SEND_FAILED(2022, "验证码发送失败，请稍后重试"),
     ARKNIGHTS_ACCOUNT_ALREADY_BOUND(2023, "该明日方舟账号已被其他用户绑定"),
 
+    LMD_MAIL_NOT_FOUND(2024, "龙门币邮件不存在"),
+    LMD_MAIL_NO_AMOUNT(2025, "该通知不包含龙门币奖励"),
+    LMD_MAIL_EXPIRED(2026, "龙门币邮件已过期，无法领取"),
+    LMD_ALREADY_CLAIMED(2027, "龙门币已领取，不可重复领取"),
+    LMD_TICKET_INVALID(2028, "领取凭证无效或已过期，请重新发起领取"),
+    LMD_INSUFFICIENT_BALANCE(2029, "龙门币余额不足"),
+    LMD_AMOUNT_INVALID(2030, "龙门币额度不合法"),
+    LMD_SIGN_INVALID(2031, "请求签名校验失败"),
+    LMD_BALANCE_MISMATCH(2032, "龙门币账面校验不一致"),
+
     TOKEN_EXPIRED(3000, "令牌已过期"),
     TOKEN_REVOKED(3001, "令牌已失效"),
     REFRESH_TOKEN_INVALID(3002, "刷新令牌无效"),

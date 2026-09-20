@@ -1,6 +1,8 @@
 package io.arknights.dateorfriends.modules.user.notification.mapper;
 
+import java.time.LocalDateTime;
 import java.util.List;
+import lombok.Data;
 import org.apache.ibatis.annotations.Insert;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
@@ -16,6 +18,8 @@ public interface SiteNotificationUserMapper {
               user_id,
               `read`,
               read_at,
+              claimed,
+              claimed_at,
               created_at
             )
             VALUES (
@@ -23,10 +27,35 @@ public interface SiteNotificationUserMapper {
               #{userId},
               #{read},
               #{readAt},
+              #{claimed},
+              #{claimedAt},
               #{createdAt}
             )
             """)
     int insertIgnore(SiteNotificationUserDO notificationUser);
+
+    @Insert("""
+            INSERT IGNORE INTO `site_notification_user` (
+              notification_id,
+              user_id,
+              `read`,
+              read_at,
+              claimed,
+              claimed_at,
+              created_at
+            )
+            SELECT
+              #{notificationId},
+              id,
+              0,
+              NULL,
+              0,
+              NULL,
+              #{now}
+            FROM `user`
+            WHERE deleted = 0
+            """)
+    int broadcastToAll(@Param("notificationId") long notificationId, @Param("now") LocalDateTime now);
 
     @Update("""
             UPDATE `site_notification_user`
@@ -38,6 +67,41 @@ public interface SiteNotificationUserMapper {
               AND `read` = 0
             """)
     int markRead(@Param("userId") long userId, @Param("notificationId") long notificationId);
+
+    @Update("""
+            UPDATE `site_notification_user`
+            SET
+              claimed = 1,
+              claimed_at = #{claimedAt}
+            WHERE user_id = #{userId}
+              AND notification_id = #{notificationId}
+              AND claimed = 0
+            """)
+    int markClaimed(
+            @Param("userId") long userId,
+            @Param("notificationId") long notificationId,
+            @Param("claimedAt") LocalDateTime claimedAt
+    );
+
+    @Select("""
+            SELECT
+              nu.id AS id,
+              nu.notification_id AS notificationId,
+              nu.user_id AS userId,
+              nu.`read` AS `read`,
+              nu.read_at AS readAt,
+              nu.claimed AS claimed,
+              nu.claimed_at AS claimedAt,
+              nu.created_at AS createdAt
+            FROM `site_notification_user` nu
+            WHERE nu.user_id = #{userId}
+              AND nu.notification_id = #{notificationId}
+            LIMIT 1
+            """)
+    UserInboxItem selectByNotifAndUser(
+            @Param("userId") long userId,
+            @Param("notificationId") long notificationId
+    );
 
     @Select("""
             <script>
@@ -75,6 +139,8 @@ public interface SiteNotificationUserMapper {
               nu.user_id AS userId,
               nu.`read` AS `read`,
               nu.read_at AS readAt,
+              nu.claimed AS claimed,
+              nu.claimed_at AS claimedAt,
               nu.created_at AS createdAt,
               n.type AS type,
               n.title AS title,
@@ -82,6 +148,8 @@ public interface SiteNotificationUserMapper {
               n.level AS level,
               n.link_url AS linkUrl,
               n.payload_json AS payloadJson,
+              n.lmd_amount AS lmdAmount,
+              n.lmd_claim_expire_at AS lmdClaimExpireAt,
               n.expire_at AS expireAt,
               n.created_at AS notificationCreatedAt
             FROM `site_notification_user` nu
@@ -103,34 +171,25 @@ public interface SiteNotificationUserMapper {
             @Param("offset") int offset
     );
 
-    interface UserInboxItem {
-        Long getId();
-
-        Long getNotificationId();
-
-        Long getUserId();
-
-        Integer getRead();
-
-        java.time.LocalDateTime getReadAt();
-
-        java.time.LocalDateTime getCreatedAt();
-
-        String getType();
-
-        String getTitle();
-
-        String getContent();
-
-        String getLevel();
-
-        String getLinkUrl();
-
-        String getPayloadJson();
-
-        java.time.LocalDateTime getExpireAt();
-
-        java.time.LocalDateTime getNotificationCreatedAt();
+    @Data
+    class UserInboxItem {
+        private Long id;
+        private Long notificationId;
+        private Long userId;
+        private Integer read;
+        private LocalDateTime readAt;
+        private Integer claimed;
+        private LocalDateTime claimedAt;
+        private LocalDateTime createdAt;
+        private String type;
+        private String title;
+        private String content;
+        private String level;
+        private String linkUrl;
+        private String payloadJson;
+        private Long lmdAmount;
+        private LocalDateTime lmdClaimExpireAt;
+        private LocalDateTime expireAt;
+        private LocalDateTime notificationCreatedAt;
     }
 }
-

@@ -12,18 +12,23 @@ import org.apache.ibatis.annotations.Update;
 @Mapper
 public interface SpineAssetMapper {
     @Insert("""
-            INSERT INTO spine_asset(asset_key, name, created_by, updated_by)
-            VALUES(#{assetKey}, #{name}, #{createdBy}, #{updatedBy})
+            INSERT INTO spine_asset(asset_key, name, type, created_by, updated_by)
+            VALUES(#{assetKey}, #{name}, #{type}, #{createdBy}, #{updatedBy})
             """)
     @Options(useGeneratedKeys = true, keyProperty = "id")
     int insertAsset(SpineAssetDO asset);
 
     @Update("""
             UPDATE spine_asset
-            SET name=#{name}, updated_by=#{updatedBy}
+            SET name=#{name}, type=#{type}, updated_by=#{updatedBy}
             WHERE id=#{id}
             """)
-    int updateAsset(@Param("id") long id, @Param("name") String name, @Param("updatedBy") long updatedBy);
+    int updateAsset(
+            @Param("id") long id,
+            @Param("name") String name,
+            @Param("type") int type,
+            @Param("updatedBy") long updatedBy
+    );
 
     @Select("SELECT * FROM spine_asset WHERE id=#{id}")
     SpineAssetDO selectById(@Param("id") long id);
@@ -52,12 +57,20 @@ public interface SpineAssetMapper {
               <if test="keyword != null and keyword != ''">
                 AND (asset_key LIKE CONCAT('%', #{keyword}, '%') OR name LIKE CONCAT('%', #{keyword}, '%'))
               </if>
+              <if test="type != null">
+                AND type = #{type}
+              </if>
             </where>
             ORDER BY updated_at DESC
             LIMIT #{size} OFFSET #{offset}
             </script>
             """)
-    List<SpineAssetDO> list(@Param("keyword") String keyword, @Param("offset") int offset, @Param("size") int size);
+    List<SpineAssetDO> list(
+            @Param("keyword") String keyword,
+            @Param("type") Integer type,
+            @Param("offset") int offset,
+            @Param("size") int size
+    );
 
     @Delete("DELETE FROM spine_asset WHERE id=#{id}")
     int deleteAsset(@Param("id") long id);

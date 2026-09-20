@@ -19,7 +19,7 @@ public class UserSpineService {
     }
 
     public Mono<List<SpineOption>> listOptions() {
-        return Mono.fromCallable(() -> spineAssetMapper.list(null, 0, 200).stream()
+        return Mono.fromCallable(() -> spineAssetMapper.list(null, 1, 0, 200).stream()
                         .map(a -> new SpineOption(
                                 a.getAssetKey(),
                                 a.getName(),

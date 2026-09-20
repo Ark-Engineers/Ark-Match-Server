@@ -41,10 +41,14 @@ public class UserNotificationController {
             String level,
             String linkUrl,
             String payloadJson,
+            long lmdAmount,
+            LocalDateTime lmdClaimExpireAt,
             LocalDateTime expireAt,
             LocalDateTime notificationCreatedAt,
             boolean read,
             LocalDateTime readAt,
+            boolean claimed,
+            LocalDateTime claimedAt,
             LocalDateTime deliveredAt
     ) {
     }
@@ -81,10 +85,14 @@ public class UserNotificationController {
                                     i.getLevel(),
                                     i.getLinkUrl(),
                                     i.getPayloadJson(),
+                                    i.getLmdAmount() == null ? 0 : i.getLmdAmount(),
+                                    i.getLmdClaimExpireAt(),
                                     i.getExpireAt(),
                                     i.getNotificationCreatedAt(),
                                     i.getRead() != null && i.getRead() == 1,
                                     i.getReadAt(),
+                                    i.getClaimed() != null && i.getClaimed() == 1,
+                                    i.getClaimedAt(),
                                     i.getCreatedAt()
                             ))
                             .toList();

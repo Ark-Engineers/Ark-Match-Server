@@ -10,6 +10,8 @@ public class SiteNotificationUserDO {
     private Long userId;
     private Integer read;
     private LocalDateTime readAt;
+    private Integer claimed = 0;
+    private LocalDateTime claimedAt;
     private LocalDateTime createdAt;
 }
 

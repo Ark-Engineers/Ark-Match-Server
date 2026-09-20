@@ -461,6 +461,8 @@ app:
 | level | ENUM(NORMAL,IMPORTANT) | 等级：普通/重要 |
 | link_url | VARCHAR(512) NULL | 跳转链接（站内路由/外链） |
 | payload_json | JSON NULL | 结构化扩展数据 |
+| lmd_amount | BIGINT | 附带的龙门币数量（0=纯通知，不携带龙门币） |
+| lmd_claim_expire_at | DATETIME NULL | 龙门币领取截止时间（NULL=永久有效；过期后无法领取） |
 | status | ENUM(SENT,OFFLINE) | 状态：已发送/下线 |
 | expire_at | DATETIME NULL | 过期时间（NULL=不过期） |
 | created_by | BIGINT NULL | 创建人ID（管理员 user.id；系统创建为 NULL） |
@@ -478,6 +480,8 @@ app:
 | user_id | BIGINT | 接收用户ID（user.id） |
 | read | TINYINT(1) | 是否已读：0 未读；1 已读 |
 | read_at | DATETIME NULL | 阅读时间（未读为 NULL） |
+| claimed | TINYINT(1) | 龙门币是否已领取：0 未领取；1 已领取（无龙门币的通知恒为 0） |
+| claimed_at | DATETIME NULL | 龙门币领取时间（未领取为 NULL） |
 | created_at | DATETIME | 投递时间 |
 
 ### 11.11 user_profile 明日方舟绑定字段
@@ -501,7 +505,108 @@ app:
 
 说明：`isAdult` 不落库，接口响应根据 `!isMinor` 实时派生。
 
+### 11.12 user_wallet（龙门币钱包）
+
+- SQL：[lmd_wallet.sql](file:///c:/Users/MrLee/Desktop/%E7%BD%97%E5%BE%B7%E4%B9%8B%E9%97%A8/%E7%A8%8B%E5%BA%8F/dateOrFriends/server/src/main/resources/sql/modules/user/lmd_wallet.sql)
+- 增量 SQL（服务器已有库执行）：[2026-09-20_lmd_wallet.sql](file:///c:/Users/MrLee/Desktop/%E7%BD%97%E5%BE%B7%E4%B9%8B%E9%97%A8/%E7%A8%8B%E5%BA%8F/dateOrFriends/server/src/main/resources/sql/incremental/2026-09-20_lmd_wallet.sql)
+
+| 字段 | 类型 | 备注 |
+|---|---|---|
+| id | BIGINT | 主键，自增 |
+| user_id | BIGINT | 用户ID（user.id；一人一行） |
+| balance | BIGINT | 当前余额（>=0；增减必须同事务写流水） |
+| created_at | DATETIME | 创建时间 |
+| updated_at | DATETIME | 更新时间 |
+
+常用索引（详见 SQL）：
+- `uk_user_wallet_user(user_id)`：保证一个用户仅一条余额记录。
+
+### 11.13 lmd_transaction（龙门币流水，只读追加）
+
+- SQL：[lmd_wallet.sql](file:///c:/Users/MrLee/Desktop/%E7%BD%97%E5%BE%B7%E4%B9%8B%E9%97%A8/%E7%A8%8B%E5%BA%8F/dateOrFriends/server/src/main/resources/sql/modules/user/lmd_wallet.sql)
+
+| 字段 | 类型 | 备注 |
+|---|---|---|
+| id | BIGINT | 主键，自增 |
+| user_id | BIGINT | 用户ID（user.id） |
+| amount | BIGINT | 变动金额（正=入账，负=出账；不为 0） |
+| balance_after | BIGINT | 变动后余额（账面校验依据） |
+| type | VARCHAR(32) | 流水类型（MAIL_CLAIM 邮件领取 / ADMIN_ADJUST 管理员调整） |
+| ref_type | VARCHAR(32) NULL | 关联对象类型（如 NOTIFICATION） |
+| ref_id | BIGINT NULL | 关联对象ID（如 site_notification.id） |
+| description | VARCHAR(255) NULL | 描述（管理员调整时必填原因） |
+| trace_id | VARCHAR(64) NULL | 请求溯源ID（X-Trace-Id） |
+| request_ip | VARCHAR(64) NULL | 请求来源IP |
+| created_by | BIGINT NULL | 操作管理员ID（管理员调整时记录；系统写入为 NULL） |
+| created_at | DATETIME | 记账时间 |
+
+常用索引（详见 SQL）：
+- `idx_lmd_tx_user_created(user_id, created_at)`：按用户翻页查询流水。
+- `idx_lmd_tx_ref(ref_type, ref_id)`：按关联对象查流水。
+- `idx_lmd_tx_type(type)`：按类型筛选（审计）。
+
+### 11.14 lmd_mail_claim（龙门币邮件领取记录）
+
+- SQL：[lmd_wallet.sql](file:///c:/Users/MrLee/Desktop/%E7%BD%97%E5%BE%B7%E4%B9%8B%E9%97%A8/%E7%A8%8B%E5%BA%8F/dateOrFriends/server/src/main/resources/sql/modules/user/lmd_wallet.sql)
+
+| 字段 | 类型 | 备注 |
+|---|---|---|
+| id | BIGINT | 主键，自增 |
+| notification_id | BIGINT | 通知ID（site_notification.id） |
+| user_id | BIGINT | 领取用户ID（user.id） |
+| amount | BIGINT | 领取的龙门币数量（快照） |
+| trace_id | VARCHAR(64) NULL | 请求溯源ID（X-Trace-Id） |
+| request_ip | VARCHAR(64) NULL | 请求来源IP |
+| created_at | DATETIME | 领取时间 |
+
+常用索引（详见 SQL）：
+- `uk_lmd_mail_claim_notif_user(notification_id, user_id)`：保证同一用户对同一通知仅能领取一次（幂等兜底）。
+
 ## 12. 测试说明
 
 - 按当前约定：项目不提交测试代码与测试依赖
 - 如后续需要补齐自动化测试，再新增 `server/src/test` 目录并恢复测试依赖
+
+## 13. 龙门币系统（LMD）
+
+### 13.1 功能概览
+
+- 每个用户一个钱包（`user_wallet`），余额永不为负；每次余额变动必须同事务写入 `lmd_transaction` 流水（含变动后余额、溯源ID、来源IP）。
+- 管理员发布带龙门币的系统通知邮件（`/admin/lmd/mail/publish`），可设置领取截止时间或永久有效；每封邮件每个用户仅可领取一次，领取后自动标记已领取；过期自动失效。
+- 用户领取采用“一次性票据”流程：先 `POST /user/lmd/mail/claim-ticket` 换取 Redis 票据（5 分钟有效），再凭票据 `POST /user/lmd/mail/claim` 完成入账；双重请求均限流。
+- 账面校验：支持管理员手动全量/单用户校验（余额 vs 流水求和），并有每日凌晨定时自动校验（只告警，不自动修复）。
+- 模块解耦：龙门币核心逻辑全部在 `modules/{user,admin}/lmd`，通知模块只负责存储 `lmd_amount / lmd_claim_expire_at / claimed` 字段与广播投递，不含任何龙门币业务规则。
+
+### 13.2 配置
+
+```yaml
+app:
+  lmd:
+    sign-secret: ${LMD_SIGN_SECRET:dev-lmd-sign-secret-change-me}  # 生产必须显式配置，留空则签名接口全部拒绝（fail-closed）
+    sign-ts-window-seconds: 300
+    verify-cron: "0 30 4 * * ?"
+```
+
+### 13.3 用户端接口（/user/lmd，需登录）
+
+- `GET /user/lmd/balance`：查询本人龙门币余额
+- `GET /user/lmd/transactions`：查询本人流水（分页，支持按类型筛选）
+- `POST /user/lmd/mail/claim-ticket`：为某通知换取一次性领取票据（限流：单用户 20/分钟、单 IP 30/分钟）
+- `POST /user/lmd/mail/claim`：凭票据领取龙门币入账（限流：单用户 10/分钟、单 IP 20/分钟）
+
+### 13.4 管理端接口（/admin/lmd，仅 ADMIN/SUPER_ADMIN）
+
+- `GET /admin/lmd/transactions`：全量流水审计（分页/筛选，含溯源ID与IP；限流 60/分钟）
+- `POST /admin/lmd/adjust`：调整用户余额（正负均可；需 HMAC 签名；限流 30/分钟）
+- `POST /admin/lmd/mail/publish`：发布带龙门币的通知邮件（需 HMAC 签名；限流 10/分钟）
+- `GET /admin/lmd/mail/claims`：邮件领取记录审计（分页/筛选）
+- `GET /admin/lmd/verify`：触发账面校验（全量或指定用户）
+
+### 13.5 安全机制
+
+- 身份鉴权：`/user/lmd/**` 仅限登录用户本人数据；`/admin/lmd/**` 走全局 `AuthWebFilter` 仅限 ADMIN/SUPER_ADMIN。
+- 频率限制：所有 LMD 接口均有 Redis 滑动窗口限流（按用户 / 按 IP 双重维度）。
+- 签名校验（管理员写操作）：请求体 + 时间戳 + 随机数 拼接后 HMAC-SHA256 签名，时间戳窗口 ±300s，随机数防重放（Redis SETNX）；生产环境 `LMD_SIGN_SECRET` 未配置时签名校验直接拒绝（fail-closed）。
+- 请求溯源：`/user/lmd/**`、`/admin/lmd/**` 请求自动分配 `X-Trace-Id`（TraceWebFilter），流水与领取记录落库 trace_id + 来源 IP，可逐笔追溯。
+- 幂等兜底：`lmd_mail_claim` 唯一键（notification_id, user_id）+ 事务内重复领取检测，杜绝并发重复入账。
+- 一致性：余额更新、流水插入、领取记录、已领取标记在同一数据库事务（SqlSession 手动事务）内提交，任一失败整体回滚。

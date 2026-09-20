@@ -6,6 +6,7 @@ public class SpineAssetDO {
     private Long id;
     private String assetKey;
     private String name;
+    private Integer type;
     private Long createdBy;
     private Long updatedBy;
     private LocalDateTime createdAt;
@@ -33,6 +34,14 @@ public class SpineAssetDO {
 
     public void setName(String name) {
         this.name = name;
+    }
+
+    public Integer getType() {
+        return type;
+    }
+
+    public void setType(Integer type) {
+        this.type = type;
     }
 
     public Long getCreatedBy() {

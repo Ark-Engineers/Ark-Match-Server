@@ -47,5 +47,44 @@ public class SiteNotificationService {
                 })
                 .subscribeOn(Schedulers.boundedElastic());
     }
+
+    public record BroadcastResult(long notificationId, long deliveredCount) {
+    }
+
+    /** 群发站内通知（带可选龙门币奖励字段），投递给全部未注销用户；龙门币金额的合法性由调用方（龙门币模块）负责 */
+    public Mono<BroadcastResult> sendToAllUsers(
+            Long actorId,
+            String type,
+            String title,
+            String content,
+            String level,
+            String linkUrl,
+            String payloadJson,
+            Long lmdAmount,
+            LocalDateTime lmdClaimExpireAt
+    ) {
+        return Mono.fromCallable(() -> {
+                    var now = LocalDateTime.now();
+                    var n = new SiteNotificationDO();
+                    n.setType(type == null ? "SYSTEM" : type.trim());
+                    n.setTitle(title == null ? "" : title.trim());
+                    n.setContent(content == null ? "" : content);
+                    n.setLevel(level == null ? "NORMAL" : level.trim().toUpperCase());
+                    n.setLinkUrl(linkUrl);
+                    n.setPayloadJson(payloadJson);
+                    n.setLmdAmount(lmdAmount == null ? 0L : lmdAmount);
+                    n.setLmdClaimExpireAt(lmdClaimExpireAt);
+                    n.setStatus("SENT");
+                    n.setExpireAt(null);
+                    n.setCreatedBy(actorId);
+                    n.setCreatedAt(now);
+                    n.setUpdatedAt(now);
+                    notificationMapper.insert(n);
+
+                    var delivered = notificationUserMapper.broadcastToAll(n.getId(), now);
+                    return new BroadcastResult(n.getId(), delivered);
+                })
+                .subscribeOn(Schedulers.boundedElastic());
+    }
 }
 

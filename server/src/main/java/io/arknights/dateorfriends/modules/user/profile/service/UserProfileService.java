@@ -2,6 +2,7 @@ package io.arknights.dateorfriends.modules.user.profile.service;
 
 import io.arknights.dateorfriends.modules.user.auth.mapper.UserMapper;
 import io.arknights.dateorfriends.modules.user.auth.mapper.ActionLogMapper;
+import io.arknights.dateorfriends.modules.user.lmd.service.LmdWalletService;
 import io.arknights.dateorfriends.modules.user.profile.controller.UserProfileController.UpdateProfileRequest;
 import io.arknights.dateorfriends.modules.user.profile.mapper.UserProfileDO;
 import io.arknights.dateorfriends.modules.user.profile.mapper.UserProfileMapper;
@@ -24,19 +25,22 @@ public class UserProfileService {
     private final UserProfileMapper userProfileMapper;
     private final GeoIpService geoIpService;
     private final ContactAesService contactAesService;
+    private final LmdWalletService lmdWalletService;
 
     public UserProfileService(
             UserMapper userMapper,
             ActionLogMapper actionLogMapper,
             UserProfileMapper userProfileMapper,
             GeoIpService geoIpService,
-            ContactAesService contactAesService
+            ContactAesService contactAesService,
+            LmdWalletService lmdWalletService
     ) {
         this.userMapper = userMapper;
         this.actionLogMapper = actionLogMapper;
         this.userProfileMapper = userProfileMapper;
         this.geoIpService = geoIpService;
         this.contactAesService = contactAesService;
+        this.lmdWalletService = lmdWalletService;
     }
 
     public record ProfileResponse(
@@ -56,7 +60,8 @@ public class UserProfileService {
             List<String> tags,
             String qq,
             String wechat,
-            String email
+            String email,
+            long lmdBalance
     ) {
     }
 
@@ -70,16 +75,18 @@ public class UserProfileService {
                     var recentIps = actionLogMapper.selectDistinctIpsByUserId(targetUserId);
                     var regionIp = profile == null ? null : profile.getRegionIp();
                     var ipForGeo = chooseIpForGeo(regionIp, user.getLastLoginIp(), recentIps);
-                    return new Object[]{user, profile, ipForGeo};
+                    var lmdBalance = lmdWalletService.getBalance(targetUserId);
+                    return new Object[]{user, profile, ipForGeo, lmdBalance};
                 })
                 .subscribeOn(Schedulers.boundedElastic())
                 .flatMap(arr -> {
                     var user = (io.arknights.dateorfriends.modules.user.auth.mapper.UserDO) arr[0];
                     var profile = (UserProfileDO) arr[1];
                     var ipForGeo = (String) arr[2];
+                    var lmdBalance = (Long) arr[3];
                     var isOwner = viewerUserId == targetUserId;
                     return geoIpService.resolveProvinceCityByIp(ipForGeo)
-                            .map(region -> toResponse(user, profile, region, isOwner));
+                            .map(region -> toResponse(user, profile, region, isOwner, lmdBalance));
                 });
     }
 
@@ -145,7 +152,8 @@ public class UserProfileService {
                     var ipForGeo = chooseIpForGeo(profile.getRegionIp(), user.getLastLoginIp(), recentIps);
                     var region = geoIpService.resolveProvinceCityByIp(ipForGeo).block();
                     if (region == null || region.isBlank()) region = "未知";
-                    return toResponse(user, profile, region, true);
+                    var lmdBalance = lmdWalletService.getBalance(userId);
+                    return toResponse(user, profile, region, true, lmdBalance);
                 })
                 .subscribeOn(Schedulers.boundedElastic());
     }
@@ -154,7 +162,8 @@ public class UserProfileService {
             io.arknights.dateorfriends.modules.user.auth.mapper.UserDO user,
             UserProfileDO profile,
             String region,
-            boolean isOwner
+            boolean isOwner,
+            long lmdBalance
     ) {
         var featuredRole = profile == null ? null : profile.getFeaturedRole();
         var signature = profile == null ? null : profile.getSignature();
@@ -189,7 +198,8 @@ public class UserProfileService {
                 tags,
                 qq,
                 wechat,
-                email
+                email,
+                lmdBalance
         );
     }
 

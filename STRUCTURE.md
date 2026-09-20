@@ -34,27 +34,70 @@ dateOrFriends/
                 PasswordConfig.java
                 Role.java
                 SecurityProperties.java
+                ban/
                 token/
                   RedisTokenStore.java
               softdelete/
                 SoftDeletable.java
                 SoftDeleteUtils.java
+              captcha/
+              mail/
+              storage/
+              verify/
+              web/
+                ApiResponse.java
+                BusinessException.java
+                ErrorCode.java
+                GlobalExceptionHandler.java
+                IpUtils.java
+                TraceWebFilter.java
             modules/
               admin/
                 auth/
                   controller/
                   service/
                     impl/
+                ban/
+                  controller/
+                  mapper/
+                lmd/
+                  controller/
+                    AdminLmdController.java
+                  service/
+                    AdminLmdSignService.java
+                notice/
+                  controller/
+                  mapper/
+                  service/
+                online/
+                  controller/
+                permission/
+                  controller/
+                  mapper/
                 ping/
                   controller/
                   service/
                     impl/
                   mapper/
-              user/
-                auth/
+                questionnaire/
                   controller/
+                  mapper/
                   service/
-                    impl/
+                spine/
+                  controller/
+                  mapper/
+                  service/
+                user/
+                  controller/
+                user_manage/
+                  controller/
+                  mapper/
+              common/
+                spine/
+                  controller/
+              user/
+                appeal/
+                  controller/
                   mapper/
                 arknights/
                   controller/
@@ -66,21 +109,92 @@ dateOrFriends/
                   mapper/
                     ArknightsBindingDO.java
                     ArknightsBindingMapper.java
+                auth/
+                  controller/
+                  service/
+                    impl/
+                  mapper/
+                ban/
+                  controller/
+                lmd/
+                  controller/
+                    UserLmdController.java
+                  service/
+                    LmdClaimService.java
+                    LmdRateLimiter.java
+                    LmdVerifyScheduler.java
+                    LmdVerifyService.java
+                    LmdWalletService.java
+                  mapper/
+                    LmdMailClaimDO.java
+                    LmdMailClaimMapper.java
+                    LmdTransactionDO.java
+                    LmdTransactionMapper.java
+                    UserWalletDO.java
+                    UserWalletMapper.java
+                match/
+                  controller/
+                  mapper/
+                  service/
+                notice/
+                  controller/
+                notification/
+                  controller/
+                  mapper/
+                  service/
+                online/
+                  controller/
+                  mapper/
+                  service/
+                  ws/
                 ping/
                   controller/
                   service/
                     impl/
                   mapper/
+                profile/
+                  controller/
+                  mapper/
+                  service/
+                questionnaire/
+                  controller/
+                  mapper/
+                  service/
+                security/
+                  controller/
+                  service/
+                spine/
+                  controller/
+                  service/
         resources/
           application.yaml
           application-dev.yaml
-          application-nodb.yaml
+          application-chen.yaml
+          application-chenServer.yaml
+          application-prod.yaml
           sql/
             README.md
+            incremental/
+              2026-09-20_lmd_wallet.sql
+              2026-09-20_spine_type.sql
             modules/
               admin/
+                ban.sql
+                notice.sql
+                permission.sql
                 ping.sql
+                questionnaire.sql
+                spine.sql
+                user_manage.sql
               user/
+                arknights_binding.sql
+                ban_appeal.sql
+                lmd_wallet.sql
+                notification.sql
+                online_room.sql
+                questionnaire_answer.sql
+                user_avatar.sql
+                user_profile.sql
                 users.sql
 ```
 

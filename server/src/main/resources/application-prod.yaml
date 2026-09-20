@@ -76,6 +76,11 @@ app:
         - admin@admin.com
       expire-sweep-fixed-delay-ms: 60000
       sync-active-bans-fixed-delay-ms: 300000
+  lmd:
+    # 生产环境必须通过环境变量注入；不配置则龙门币写操作全部拒绝（fail-closed）
+    sign-secret: ${LMD_SIGN_SECRET:}
+    sign-ts-window-seconds: 300
+    verify-cron: "0 30 4 * * ?"
   admin:
     bootstrap:
       super-account: superadmin

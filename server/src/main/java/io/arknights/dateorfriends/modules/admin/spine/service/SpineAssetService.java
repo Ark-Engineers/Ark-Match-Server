@@ -66,6 +66,7 @@ public class SpineAssetService {
             long id,
             String assetKey,
             String name,
+            int type,
             long createdBy,
             long updatedBy,
             LocalDateTime createdAt,
@@ -74,6 +75,20 @@ public class SpineAssetService {
     }
 
     public record DetailResponse(AssetItem asset, List<FileItem> files) {
+    }
+
+    private static int normalizeType(String raw) {
+        if (raw == null || raw.trim().isEmpty()) return 1;
+        int v;
+        try {
+            v = Integer.parseInt(raw.trim());
+        } catch (NumberFormatException e) {
+            throw new BusinessException(ErrorCode.PARAM_INVALID, "type 需为 1(人物)/2(敌人)/3(BOSS)");
+        }
+        if (v < 1 || v > 3) {
+            throw new BusinessException(ErrorCode.PARAM_INVALID, "type 需为 1(人物)/2(敌人)/3(BOSS)");
+        }
+        return v;
     }
 
     private static String safeFilename(String raw) {
@@ -223,7 +238,7 @@ public class SpineAssetService {
         }
     }
 
-    public Mono<DetailResponse> createFromZip(long actorId, String name, FilePart zip) {
+    public Mono<DetailResponse> createFromZip(long actorId, String name, String type, FilePart zip) {
         if (zip == null) return Mono.error(new BusinessException(ErrorCode.PARAM_INVALID, "缺少 zip 文件"));
         var zipName = safeFilename(zip.filename());
         if (!Objects.equals(extLower(zipName), "zip")) {
@@ -231,6 +246,7 @@ public class SpineAssetService {
         }
         var safeName = name == null ? "" : name.trim();
         if (safeName.length() > 128) return Mono.error(new BusinessException(ErrorCode.PARAM_INVALID, "name 长度需<=128"));
+        var safeType = normalizeType(type);
 
         return Mono.fromCallable(() -> Files.createTempDirectory("spine-zip-"))
                 .subscribeOn(Schedulers.boundedElastic())
@@ -246,6 +262,7 @@ public class SpineAssetService {
                                             var asset = new SpineAssetDO();
                                             asset.setAssetKey(m.assetKey());
                                             asset.setName(safeName.isBlank() ? null : safeName);
+                                            asset.setType(safeType);
                                             asset.setCreatedBy(actorId);
                                             asset.setUpdatedBy(actorId);
                                             assetMapper.insertAsset(asset);
@@ -288,7 +305,7 @@ public class SpineAssetService {
                 });
     }
 
-    public Mono<DetailResponse> updateFromZip(long actorId, long id, String name, FilePart zip) {
+    public Mono<DetailResponse> updateFromZip(long actorId, long id, String name, String type, FilePart zip) {
         if (zip == null) return Mono.error(new BusinessException(ErrorCode.PARAM_INVALID, "缺少 zip 文件"));
         var zipName = safeFilename(zip.filename());
         if (!Objects.equals(extLower(zipName), "zip")) {
@@ -296,6 +313,7 @@ public class SpineAssetService {
         }
         var safeName = name == null ? "" : name.trim();
         if (safeName.length() > 128) return Mono.error(new BusinessException(ErrorCode.PARAM_INVALID, "name 长度需<=128"));
+        var safeType = normalizeType(type);
 
         return Mono.fromCallable(() -> Files.createTempDirectory("spine-zip-"))
                 .subscribeOn(Schedulers.boundedElastic())
@@ -313,7 +331,7 @@ public class SpineAssetService {
                                                 throw new BusinessException(ErrorCode.PARAM_INVALID, "zip 内资源 key 与当前资源不一致");
                                             }
 
-                                            assetMapper.updateAsset(id, safeName.isBlank() ? null : safeName, actorId);
+                                            assetMapper.updateAsset(id, safeName.isBlank() ? null : safeName, safeType, actorId);
 
                                             deletePathQuietly(assetDir(assetKey));
                                             try {
@@ -388,7 +406,7 @@ public class SpineAssetService {
 
         return Mono.fromCallable(() -> {
                     var total = assetMapper.count(kw);
-                    var list = assetMapper.list(kw, offset, s);
+                    var list = assetMapper.list(kw, null, offset, s);
                     var items = list.stream().map(this::toItem).toList();
                     return new PageResponse<>(total, p, s, items);
                 })
@@ -405,7 +423,7 @@ public class SpineAssetService {
                 .subscribeOn(Schedulers.boundedElastic());
     }
 
-    public Mono<DetailResponse> create(long actorId, String name, FilePart atlas, FilePart skel, List<FilePart> pngs, List<FilePart> extras) {
+    public Mono<DetailResponse> create(long actorId, String name, String type, FilePart atlas, FilePart skel, List<FilePart> pngs, List<FilePart> extras) {
         if (atlas == null || skel == null) return Mono.error(new BusinessException(ErrorCode.PARAM_INVALID, "缺少 atlas/skel 文件"));
         if (pngs == null || pngs.isEmpty()) return Mono.error(new BusinessException(ErrorCode.PARAM_INVALID, "缺少 png 文件"));
 
@@ -423,6 +441,7 @@ public class SpineAssetService {
 
         var safeName = name == null ? "" : name.trim();
         if (safeName.length() > 128) return Mono.error(new BusinessException(ErrorCode.PARAM_INVALID, "name 长度需<=128"));
+        var safeType = normalizeType(type);
 
         var allFiles = new ArrayList<FilePart>();
         allFiles.add(atlas);
@@ -438,6 +457,7 @@ public class SpineAssetService {
                                 var asset = new SpineAssetDO();
                                 asset.setAssetKey(assetKey);
                                 asset.setName(safeName.isBlank() ? null : safeName);
+                                asset.setType(safeType);
                                 asset.setCreatedBy(actorId);
                                 asset.setUpdatedBy(actorId);
                                 assetMapper.insertAsset(asset);
@@ -460,9 +480,10 @@ public class SpineAssetService {
                         ));
     }
 
-    public Mono<DetailResponse> update(long actorId, long id, String name, FilePart atlas, FilePart skel, List<FilePart> pngs, List<FilePart> extras) {
+    public Mono<DetailResponse> update(long actorId, long id, String name, String type, FilePart atlas, FilePart skel, List<FilePart> pngs, List<FilePart> extras) {
         var safeName = name == null ? "" : name.trim();
         if (safeName.length() > 128) return Mono.error(new BusinessException(ErrorCode.PARAM_INVALID, "name 长度需<=128"));
+        var safeType = normalizeType(type);
 
         var hasFileUpdate = atlas != null || skel != null || (pngs != null && !pngs.isEmpty()) || (extras != null && !extras.isEmpty());
 
@@ -472,7 +493,7 @@ public class SpineAssetService {
                     if (asset == null) return Mono.error(new BusinessException(ErrorCode.PARAM_INVALID, "资源不存在"));
                     var assetKey = asset.getAssetKey();
                     return Mono.fromCallable(() -> {
-                                assetMapper.updateAsset(id, safeName.isBlank() ? null : safeName, actorId);
+                                assetMapper.updateAsset(id, safeName.isBlank() ? null : safeName, safeType, actorId);
                                 return 1;
                             })
                             .subscribeOn(Schedulers.boundedElastic())
@@ -611,6 +632,7 @@ public class SpineAssetService {
                 d.getId() == null ? 0 : d.getId(),
                 d.getAssetKey(),
                 d.getName(),
+                d.getType() == null ? 1 : d.getType(),
                 d.getCreatedBy() == null ? 0 : d.getCreatedBy(),
                 d.getUpdatedBy() == null ? 0 : d.getUpdatedBy(),
                 d.getCreatedAt(),

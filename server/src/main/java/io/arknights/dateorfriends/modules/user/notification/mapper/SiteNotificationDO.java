@@ -12,6 +12,8 @@ public class SiteNotificationDO {
     private String level;
     private String linkUrl;
     private String payloadJson;
+    private Long lmdAmount = 0L;
+    private LocalDateTime lmdClaimExpireAt;
     private String status;
     private LocalDateTime expireAt;
     private Long createdBy;

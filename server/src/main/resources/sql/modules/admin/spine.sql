@@ -14,6 +14,7 @@ CREATE TABLE `spine_asset` (
 
   `asset_key` VARCHAR(64) NOT NULL COMMENT '资源标识（由 atlas/skel 文件名推断；全局唯一）',
   `name` VARCHAR(128) NULL COMMENT '展示名称（可为空）',
+  `type` TINYINT NOT NULL DEFAULT 1 COMMENT '类型：1=人物，2=敌人，3=BOSS',
 
   `created_by` BIGINT NOT NULL COMMENT '创建人ID（管理员 user.id）',
   `updated_by` BIGINT NOT NULL COMMENT '最后修改人ID（管理员 user.id）',
