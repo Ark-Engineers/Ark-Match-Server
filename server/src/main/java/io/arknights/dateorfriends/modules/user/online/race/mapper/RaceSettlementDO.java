@@ -8,7 +8,7 @@ public class RaceSettlementDO {
     private Long id;
     private Long roundId;
     private Long userId;
-    private Long participantId;
+    private Long assetId;
     private Integer rankNo;
     private Long betAmount;
     private Long payout;

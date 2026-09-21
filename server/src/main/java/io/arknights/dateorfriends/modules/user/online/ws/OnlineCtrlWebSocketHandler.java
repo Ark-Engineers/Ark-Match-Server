@@ -1,10 +1,7 @@
 package io.arknights.dateorfriends.modules.user.online.ws;
 
 import io.arknights.dateorfriends.tools.jwt.JwtService;
-import io.arknights.dateorfriends.tools.jwt.JwtTokenType;
 import io.arknights.dateorfriends.tools.security.token.RedisTokenStore;
-import java.net.URI;
-import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import org.springframework.stereotype.Component;
 import org.springframework.web.reactive.socket.CloseStatus;
@@ -12,6 +9,8 @@ import org.springframework.web.reactive.socket.WebSocketHandler;
 import org.springframework.web.reactive.socket.WebSocketMessage;
 import org.springframework.web.reactive.socket.WebSocketSession;
 import reactor.core.publisher.Mono;
+
+import static io.arknights.dateorfriends.modules.user.online.ws.OnlineWsUtils.validateAccessToken;
 
 @Component
 public class OnlineCtrlWebSocketHandler implements WebSocketHandler {
@@ -27,11 +26,11 @@ public class OnlineCtrlWebSocketHandler implements WebSocketHandler {
     @Override
     public Mono<Void> handle(WebSocketSession session) {
         var uri = session.getHandshakeInfo().getUri();
-        var token = queryParam(uri, "token");
+        var token = OnlineWsUtils.queryParam(uri, "token");
         if (token == null || token.isBlank()) {
             return session.close(CloseStatus.POLICY_VIOLATION);
         }
-        return validate(token)
+        return validateAccessToken(jwtService, tokenStore, token)
                 .flatMap(ignored -> session.receive()
                         .timeout(Duration.ofMinutes(10))
                         .map(WebSocketMessage::getPayloadAsText)
@@ -43,22 +42,6 @@ public class OnlineCtrlWebSocketHandler implements WebSocketHandler {
                         .onErrorResume(e -> Mono.empty())
                         .then())
                 .onErrorResume(e -> session.close(CloseStatus.POLICY_VIOLATION));
-    }
-
-    private Mono<Integer> validate(String token) {
-        try {
-            var principal = jwtService.parseAndValidate(token, JwtTokenType.ACCESS);
-            return tokenStore.isBlacklisted(principal.jti())
-                    .flatMap(blacklisted -> {
-                        if (Boolean.TRUE.equals(blacklisted)) return Mono.error(new IllegalStateException("token revoked"));
-                        return tokenStore.getTokenVersion(principal.userId()).flatMap(ver -> {
-                            if (ver != principal.tokenVersion()) return Mono.error(new IllegalStateException("token revoked"));
-                            return Mono.just(0);
-                        });
-                    });
-        } catch (Exception e) {
-            return Mono.error(new IllegalStateException("invalid token"));
-        }
     }
 
     private long extractTs(String text) {
@@ -82,27 +65,6 @@ public class OnlineCtrlWebSocketHandler implements WebSocketHandler {
             return Long.parseLong(sb.toString());
         } catch (Exception e) {
             return 0;
-        }
-    }
-
-    private String queryParam(URI uri, String key) {
-        var q = uri.getRawQuery();
-        if (q == null || q.isBlank()) return null;
-        for (var part : q.split("&")) {
-            if (part.isBlank()) continue;
-            var kv = part.split("=", 2);
-            var k = decode(kv[0]);
-            if (!key.equals(k)) continue;
-            return kv.length > 1 ? decode(kv[1]) : "";
-        }
-        return null;
-    }
-
-    private String decode(String s) {
-        try {
-            return java.net.URLDecoder.decode(s, StandardCharsets.UTF_8);
-        } catch (Exception e) {
-            return s;
         }
     }
 }

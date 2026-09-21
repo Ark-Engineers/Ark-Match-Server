@@ -13,8 +13,8 @@ import org.apache.ibatis.annotations.Update;
 public interface RaceRoundMapper {
 
     @Insert("""
-            INSERT INTO horse_race_round(race_id, round_no, status, bet_start_at, bet_end_at, race_start_at, podium_end_at)
-            VALUES(#{raceId}, #{roundNo}, #{status}, #{betStartAt}, #{betEndAt}, #{raceStartAt}, #{podiumEndAt})
+            INSERT INTO horse_race_round(race_id, round_no, lineup_json, status, bet_start_at, bet_end_at, race_start_at, podium_end_at)
+            VALUES(#{raceId}, #{roundNo}, #{lineupJson}, #{status}, #{betStartAt}, #{betEndAt}, #{raceStartAt}, #{podiumEndAt})
             """)
     @Options(useGeneratedKeys = true, keyProperty = "id")
     int insert(RaceRoundDO round);
@@ -25,11 +25,73 @@ public interface RaceRoundMapper {
     @Select("SELECT * FROM horse_race_round WHERE id=#{id} FOR UPDATE")
     RaceRoundDO selectByIdForUpdate(@Param("id") long id);
 
-    @Select("SELECT * FROM horse_race_round WHERE race_id=#{raceId} ORDER BY round_no DESC LIMIT 1")
+    @Select("""
+            SELECT * FROM horse_race_round WHERE race_id=#{raceId}
+            ORDER BY CASE WHEN status='FINISHED' THEN 1 ELSE 0 END,
+                     CASE WHEN status<>'FINISHED' THEN round_no END ASC,
+                     round_no DESC
+            LIMIT 1
+            """)
     RaceRoundDO selectCurrentByRaceId(@Param("raceId") long raceId);
+
+    @Select("""
+            <script>
+            SELECT * FROM (
+                SELECT *, ROW_NUMBER() OVER (
+                    PARTITION BY race_id
+                    ORDER BY CASE WHEN status='FINISHED' THEN 1 ELSE 0 END,
+                             CASE WHEN status != 'FINISHED' THEN round_no END ASC,
+                             round_no DESC
+                ) AS rn
+                FROM horse_race_round
+                WHERE race_id IN
+                <foreach item='id' collection='raceIds' open='(' separator=',' close=')'>
+                    #{id}
+                </foreach>
+            ) t WHERE rn = 1
+            </script>
+            """)
+    List<RaceRoundDO> selectCurrentByRaceIds(@Param("raceIds") List<Long> raceIds);
+
+    @Select("SELECT * FROM horse_race_round WHERE race_id=#{raceId} AND round_no=#{roundNo}")
+    RaceRoundDO selectByRaceAndRoundNo(@Param("raceId") long raceId, @Param("roundNo") int roundNo);
 
     @Select("SELECT * FROM horse_race_round WHERE race_id=#{raceId} ORDER BY round_no DESC")
     List<RaceRoundDO> selectByRaceId(@Param("raceId") long raceId);
+
+    @Update("""
+            UPDATE horse_race_round SET next_lineup_json=#{lineupJson}
+            WHERE id=#{id} AND status IN ('BETTING','RACING','PODIUM')
+            """)
+    int updateNextLineupJson(@Param("id") long id, @Param("lineupJson") String lineupJson);
+
+    @Update("""
+            UPDATE horse_race_round
+            SET developer_controlled=1, seed=#{seed}, result_cipher=#{resultCipher}, result_commit=#{resultCommit}
+            WHERE id=#{id} AND status='BETTING' AND bet_count=0
+            """)
+    int setPlannedRanking(
+            @Param("id") long id,
+            @Param("seed") String seed,
+            @Param("resultCipher") String resultCipher,
+            @Param("resultCommit") String resultCommit
+    );
+
+    @Update("""
+            UPDATE horse_race_round
+            SET bet_start_at=LEAST(bet_start_at, #{now}), bet_end_at=LEAST(bet_end_at, #{now}),
+                race_start_at=#{now}, podium_end_at=DATE_ADD(#{now}, INTERVAL 120 SECOND)
+            WHERE id=#{id} AND status IN ('BETTING','RACING')
+            """)
+    int startImmediately(@Param("id") long id, @Param("now") LocalDateTime now);
+
+    @Update("""
+            UPDATE horse_race_round
+            SET lineup_json=#{lineupJson}, bet_start_at=#{betStartAt}, bet_end_at=#{betEndAt},
+                race_start_at=#{raceStartAt}, podium_end_at=#{podiumEndAt}
+            WHERE id=#{id} AND status='BETTING' AND bet_count=0
+            """)
+    int reschedule(RaceRoundDO round);
 
     /** 竞猜结束：生成名次与种子，BETTING -> RACING；影响行数为0说明已被其他流程处理 */
     @Update("""
@@ -47,13 +109,14 @@ public interface RaceRoundMapper {
     /** 结算完成：RACING -> PODIUM */
     @Update("""
             UPDATE horse_race_round
-            SET status='PODIUM', paid_total=#{paidTotal}, settled_at=#{settledAt}
+            SET status='PODIUM', paid_total=#{paidTotal}, settled_at=#{settledAt}, podium_end_at=#{podiumEndAt}
             WHERE id=#{id} AND status='RACING'
             """)
     int markPodium(
             @Param("id") long id,
             @Param("paidTotal") long paidTotal,
-            @Param("settledAt") LocalDateTime settledAt
+            @Param("settledAt") LocalDateTime settledAt,
+            @Param("podiumEndAt") LocalDateTime podiumEndAt
     );
 
     /** 领奖台结束：PODIUM -> FINISHED */

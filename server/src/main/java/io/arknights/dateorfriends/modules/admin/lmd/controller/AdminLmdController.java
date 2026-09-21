@@ -1,6 +1,7 @@
 package io.arknights.dateorfriends.modules.admin.lmd.controller;
 
 import io.arknights.dateorfriends.modules.admin.lmd.service.AdminLmdSignService;
+import io.arknights.dateorfriends.modules.user.auth.mapper.UserMapper;
 import io.arknights.dateorfriends.modules.user.lmd.mapper.LmdMailClaimMapper;
 import io.arknights.dateorfriends.modules.user.lmd.mapper.LmdTransactionMapper;
 import io.arknights.dateorfriends.modules.user.lmd.service.LmdRateLimiter;
@@ -9,16 +10,20 @@ import io.arknights.dateorfriends.modules.user.lmd.service.LmdWalletService;
 import io.arknights.dateorfriends.modules.user.notification.service.SiteNotificationService;
 import io.arknights.dateorfriends.tools.jwt.JwtPrincipal;
 import io.arknights.dateorfriends.tools.security.AuthWebFilter;
+import io.arknights.dateorfriends.tools.security.Role;
 import io.arknights.dateorfriends.tools.web.ApiResponse;
 import io.arknights.dateorfriends.tools.web.BusinessException;
 import io.arknights.dateorfriends.tools.web.ErrorCode;
 import io.arknights.dateorfriends.tools.web.IpUtils;
 import io.arknights.dateorfriends.tools.web.TraceWebFilter;
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
+import jakarta.validation.constraints.NotNull;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
+import java.util.Locale;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -41,6 +46,7 @@ public class AdminLmdController {
 
     private static final DateTimeFormatter CLAIM_EXPIRE_FORMAT = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
     private static final long MAX_SINGLE_AMOUNT = 10_000_000L;
+    private static final long MAX_SAFE_INTEGER = 9_007_199_254_740_991L;
 
     private final LmdWalletService walletService;
     private final LmdTransactionMapper txMapper;
@@ -49,6 +55,7 @@ public class AdminLmdController {
     private final LmdRateLimiter rateLimiter;
     private final SiteNotificationService notificationService;
     private final LmdVerifyService verifyService;
+    private final UserMapper userMapper;
 
     private final int adjustPerMinute;
     private final int publishPerMinute;
@@ -62,6 +69,7 @@ public class AdminLmdController {
             LmdRateLimiter rateLimiter,
             SiteNotificationService notificationService,
             LmdVerifyService verifyService,
+            UserMapper userMapper,
             @Value("${app.lmd.rate.adjust-per-minute:30}") int adjustPerMinute,
             @Value("${app.lmd.rate.publish-per-minute:10}") int publishPerMinute,
             @Value("${app.lmd.rate.audit-per-minute:60}") int auditPerMinute
@@ -73,6 +81,7 @@ public class AdminLmdController {
         this.rateLimiter = rateLimiter;
         this.notificationService = notificationService;
         this.verifyService = verifyService;
+        this.userMapper = userMapper;
         this.adjustPerMinute = Math.max(1, adjustPerMinute);
         this.publishPerMinute = Math.max(1, publishPerMinute);
         this.auditPerMinute = Math.max(1, auditPerMinute);
@@ -110,6 +119,17 @@ public class AdminLmdController {
     }
 
     public record AdjustResponse(long userId, long amount, long balanceAfter) {
+    }
+
+    public record SetBalanceRequest(
+            @Min(1) @Max(MAX_SAFE_INTEGER) long userId,
+            @NotNull @Min(0) @Max(MAX_SAFE_INTEGER) Long balance,
+            @NotNull @Min(0) @Max(MAX_SAFE_INTEGER) Long expectedBalance,
+            String description,
+            long ts,
+            String nonce,
+            String sign
+    ) {
     }
 
     public record PublishRequest(
@@ -186,7 +206,7 @@ public class AdminLmdController {
     @PostMapping("/adjust")
     public Mono<ApiResponse<AdjustResponse>> adjust(@Valid @RequestBody AdjustRequest req, ServerWebExchange exchange) {
         var principal = requirePrincipal(exchange);
-        if (req.amount() == 0 || Math.abs(req.amount()) > MAX_SINGLE_AMOUNT) {
+        if (req.amount() == 0 || req.amount() < -MAX_SINGLE_AMOUNT || req.amount() > MAX_SINGLE_AMOUNT) {
             return Mono.error(new BusinessException(ErrorCode.LMD_AMOUNT_INVALID,
                     "额度必须为非零且绝对值不超过 " + MAX_SINGLE_AMOUNT));
         }
@@ -198,10 +218,35 @@ public class AdminLmdController {
         return rateLimiter.check("admin-adjust", String.valueOf(principal.userId()), adjustPerMinute)
                 .then(signService.verify(canonical, req.ts(), req.nonce(), req.sign()))
                 .then(Mono.fromCallable(() -> {
+                            assertCanOperateTarget(principal, req.userId());
                             var ip = IpUtils.resolveClientIp(exchange);
                             var traceId = traceOf(exchange);
                             var result = walletService.adjustBalance(
                                     req.userId(), req.amount(), description, traceId, ip, principal.userId());
+                            return new AdjustResponse(req.userId(), result.amount(), result.balanceAfter());
+                        })
+                        .subscribeOn(Schedulers.boundedElastic()))
+                .map(ApiResponse::ok);
+    }
+
+    /** 设置用户龙门币余额，校验预期余额后以 ADMIN_ADJUST 差额流水记账。 */
+    @PostMapping("/set-balance")
+    public Mono<ApiResponse<AdjustResponse>> setBalance(@Valid @RequestBody SetBalanceRequest req, ServerWebExchange exchange) {
+        var principal = requirePrincipal(exchange);
+        var description = req.description() == null ? null : req.description().trim();
+        if (description != null && description.length() > 255) {
+            return Mono.error(new BusinessException(ErrorCode.PARAM_INVALID, "备注过长"));
+        }
+        var canonical = signService.canonicalForSetBalance(
+                req.userId(), req.balance(), req.expectedBalance(), description, req.ts(), req.nonce());
+        return rateLimiter.check("admin-adjust", String.valueOf(principal.userId()), adjustPerMinute)
+                .then(signService.verify(canonical, req.ts(), req.nonce(), req.sign()))
+                .then(Mono.fromCallable(() -> {
+                            assertCanOperateTarget(principal, req.userId());
+                            var ip = IpUtils.resolveClientIp(exchange);
+                            var traceId = traceOf(exchange);
+                            var result = walletService.setBalance(
+                                    req.userId(), req.balance(), req.expectedBalance(), description, traceId, ip, principal.userId());
                             return new AdjustResponse(req.userId(), result.amount(), result.balanceAfter());
                         })
                         .subscribeOn(Schedulers.boundedElastic()))
@@ -302,10 +347,32 @@ public class AdminLmdController {
         return exchange.getAttributeOrDefault(TraceWebFilter.ATTR_TRACE_ID, "");
     }
 
+    private void assertCanOperateTarget(JwtPrincipal principal, long userId) {
+        var target = userMapper.selectById(userId);
+        if (target == null || (target.getDeleted() != null && target.getDeleted() != 0)) {
+            throw new BusinessException(ErrorCode.USER_NOT_FOUND);
+        }
+        var actorRole = principal.role() == null ? "" : principal.role().trim().toUpperCase(Locale.ROOT);
+        var targetRole = target.getRole() == null ? "" : target.getRole().trim().toUpperCase(Locale.ROOT);
+        if (Role.SUPER_ADMIN.name().equals(targetRole)) {
+            throw new BusinessException(ErrorCode.FORBIDDEN, "禁止操作超级管理员账号");
+        }
+        if (Role.ADMIN.name().equals(actorRole) && !Role.USER.name().equals(targetRole)) {
+            throw new BusinessException(ErrorCode.FORBIDDEN, "普通管理员仅可操作普通用户");
+        }
+        if (!Role.USER.name().equals(targetRole) && !Role.ADMIN.name().equals(targetRole)) {
+            throw new BusinessException(ErrorCode.FORBIDDEN);
+        }
+    }
+
     private JwtPrincipal requirePrincipal(ServerWebExchange exchange) {
         var principal = exchange.<JwtPrincipal>getAttribute(AuthWebFilter.ATTR_PRINCIPAL);
         if (principal == null) {
             throw new BusinessException(ErrorCode.UNAUTHORIZED);
+        }
+        var role = principal.role() == null ? "" : principal.role().trim().toUpperCase(Locale.ROOT);
+        if (!Role.ADMIN.name().equals(role) && !Role.SUPER_ADMIN.name().equals(role)) {
+            throw new BusinessException(ErrorCode.FORBIDDEN);
         }
         return principal;
     }

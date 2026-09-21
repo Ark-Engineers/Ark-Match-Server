@@ -10,6 +10,8 @@ import io.arknights.dateorfriends.tools.web.ErrorCode;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Size;
 import java.util.List;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -120,10 +122,101 @@ public class AdminRaceController {
                 .map(ApiResponse::ok);
     }
 
+    public record RoundControlRequest(@Min(1) long roundId) {
+    }
+
+    public record EndRoundRequest(@Min(1) long roundId, @NotBlank String expectedStatus) {
+    }
+
+    public record RankingRequest(
+            @Min(1) long roundId,
+            @NotNull @Size(min = 5, max = 5) List<@NotNull @Min(1) Long> participantIds
+    ) {
+    }
+
+    public record NextParticipantsRequest(
+            @Min(1) long roundId,
+            @NotNull @Size(max = 5) List<@NotNull @Min(1) Long> assetIds
+    ) {
+    }
+
+    /** 仅 SUPER_ADMIN 查询控制状态；仅演示场返回预设名次，普通竞猜不提前公开排名。 */
+    @GetMapping("/{id}/developer")
+    public Mono<ApiResponse<RaceEngineService.DeveloperState>> developer(
+            @PathVariable("id") long id, ServerWebExchange exchange
+    ) {
+        requireSuperAdmin(exchange);
+        return Mono.fromCallable(() -> engine.developerState(id))
+                .subscribeOn(Schedulers.boundedElastic()).map(ApiResponse::ok);
+    }
+
+    /** 仅 SUPER_ADMIN 立即开赛或跳过赛前等待；绑定当前轮次，保留已有下注和确定的名次。 */
+    @PostMapping("/{id}/developer/start")
+    public Mono<ApiResponse<Boolean>> startNow(
+            @PathVariable("id") long id, @Valid @RequestBody RoundControlRequest req,
+            ServerWebExchange exchange
+    ) {
+        var admin = requireSuperAdmin(exchange);
+        return Mono.fromCallable(() -> {
+            engine.startNow(admin.userId(), id, req.roundId());
+            return true;
+        }).subscribeOn(Schedulers.boundedElastic()).map(ApiResponse::ok);
+    }
+
+    /** 仅 SUPER_ADMIN 指定完整名次；仅无人下注的竞猜阶段允许，保存后本轮禁止下注。 */
+    @PostMapping("/{id}/developer/ranking")
+    public Mono<ApiResponse<Boolean>> setRanking(
+            @PathVariable("id") long id, @Valid @RequestBody RankingRequest req,
+            ServerWebExchange exchange
+    ) {
+        var admin = requireSuperAdmin(exchange);
+        return Mono.fromCallable(() -> {
+            engine.setRanking(admin.userId(), id, req.roundId(), req.participantIds());
+            return true;
+        }).subscribeOn(Schedulers.boundedElastic()).map(ApiResponse::ok);
+    }
+
+    /** 仅 SUPER_ADMIN 指定下一轮五名敌人或Boss；空数组清除计划，最后一轮不可设置。 */
+    @PostMapping("/{id}/developer/next-participants")
+    public Mono<ApiResponse<Boolean>> nextParticipants(
+            @PathVariable("id") long id, @Valid @RequestBody NextParticipantsRequest req,
+            ServerWebExchange exchange
+    ) {
+        var admin = requireSuperAdmin(exchange);
+        return Mono.fromCallable(() -> {
+            engine.setNextParticipants(admin.userId(), id, req.roundId(), req.assetIds());
+            return true;
+        }).subscribeOn(Schedulers.boundedElastic()).map(ApiResponse::ok);
+    }
+
+    /** 仅 SUPER_ADMIN 提前结算或结束领奖台；同时校验轮次与确认时阶段，禁止跨阶段重复推进。 */
+    @PostMapping("/{id}/developer/end")
+    public Mono<ApiResponse<Boolean>> endNow(
+            @PathVariable("id") long id, @Valid @RequestBody EndRoundRequest req,
+            ServerWebExchange exchange
+    ) {
+        var admin = requireSuperAdmin(exchange);
+        return Mono.fromCallable(() -> {
+            engine.endNow(admin.userId(), id, req.roundId(), req.expectedStatus());
+            return true;
+        }).subscribeOn(Schedulers.boundedElastic()).map(ApiResponse::ok);
+    }
+
+    private JwtPrincipal requireSuperAdmin(ServerWebExchange exchange) {
+        var principal = requireAdmin(exchange);
+        if (!"SUPER_ADMIN".equalsIgnoreCase(principal.role())) {
+            throw new BusinessException(ErrorCode.FORBIDDEN);
+        }
+        return principal;
+    }
+
     private JwtPrincipal requireAdmin(ServerWebExchange exchange) {
         var principal = exchange.<JwtPrincipal>getAttribute(AuthWebFilter.ATTR_PRINCIPAL);
         if (principal == null) {
             throw new BusinessException(ErrorCode.UNAUTHORIZED);
+        }
+        if (!"ADMIN".equalsIgnoreCase(principal.role()) && !"SUPER_ADMIN".equalsIgnoreCase(principal.role())) {
+            throw new BusinessException(ErrorCode.FORBIDDEN);
         }
         return principal;
     }

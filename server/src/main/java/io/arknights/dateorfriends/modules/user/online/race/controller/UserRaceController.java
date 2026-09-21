@@ -36,7 +36,7 @@ public class UserRaceController {
 
     public record BetRequest(
             @NotBlank String roomId,
-            @Min(1) long participantId,
+            @Min(1) long assetId,
             @Min(1) long amount
     ) {
     }
@@ -61,7 +61,7 @@ public class UserRaceController {
         var ip = IpUtils.resolveClientIp(exchange);
         return rateLimiter.check("race-bet", String.valueOf(principal.userId()), 12)
                 .then(Mono.fromCallable(() -> engine.placeBet(
-                        principal.userId(), req.roomId().trim(), req.participantId(), req.amount(), ip
+                        principal.userId(), req.roomId().trim(), req.assetId(), req.amount(), ip
                 )))
                 .subscribeOn(Schedulers.boundedElastic())
                 .map(ApiResponse::ok);

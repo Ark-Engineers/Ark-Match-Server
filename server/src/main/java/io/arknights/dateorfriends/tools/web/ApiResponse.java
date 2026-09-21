@@ -1,5 +1,8 @@
 package io.arknights.dateorfriends.tools.web;
 
+import tools.jackson.databind.annotation.JsonSerialize;
+
+@JsonSerialize(using = ApiResponseSerializer.class)
 public record ApiResponse<T>(int code, String message, T data) {
 
     public static <T> ApiResponse<T> ok(T data) {

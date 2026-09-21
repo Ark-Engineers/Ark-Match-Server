@@ -60,12 +60,42 @@ public final class RaceSimulator {
         double[][] profiles = new double[RACER_COUNT][TOTAL_TICKS + 1];
         for (int i = 0; i < RACER_COUNT; i++) {
             var rng = new Mulberry32(baseSeed + i * MIX);
-            double m = M_MIN + rng.next() * M_RANGE;
+            double mBase = M_MIN + rng.next() * M_RANGE;
             double pos = 0.0;
             profiles[i][0] = 0.0;
+            
+            // 为每个参赛者生成速度变化曲线（分段加速/减速）
+            int phaseCount = 3 + (int)(rng.next() * 4); // 3-6 个速度阶段
+            int[] phaseBoundaries = new int[phaseCount + 1];
+            double[] phaseSpeeds = new double[phaseCount];
+            phaseBoundaries[0] = 0;
+            for (int p = 0; p < phaseCount; p++) {
+                // 随机分配阶段长度（至少 100 tick）
+                int remaining = TOTAL_TICKS - phaseBoundaries[p];
+                if (p == phaseCount - 1) {
+                    phaseBoundaries[p + 1] = TOTAL_TICKS;
+                } else {
+                    int minLen = Math.max(100, remaining / (phaseCount - p));
+                    int maxLen = Math.min(remaining - 100 * (phaseCount - p - 1), remaining);
+                    phaseBoundaries[p + 1] = phaseBoundaries[p] + minLen + (int)(rng.next() * (maxLen - minLen));
+                }
+                // 每个阶段的速度系数（0.7-1.3 倍基础速度）
+                phaseSpeeds[p] = 0.7 + rng.next() * 0.6;
+            }
+            
             for (int t = 0; t < TOTAL_TICKS; t++) {
+                // 确定当前处于哪个速度阶段
+                int currentPhase = 0;
+                for (int p = 0; p < phaseCount; p++) {
+                    if (t >= phaseBoundaries[p] && t < phaseBoundaries[p + 1]) {
+                        currentPhase = p;
+                        break;
+                    }
+                }
+                
                 double jitter = 1.0 + (rng.next() * 2.0 - 1.0) * JITTER;
-                pos += BASE_SPEED * m * jitter * (TICK_MS / 1000.0);
+                double speedFactor = phaseSpeeds[currentPhase];
+                pos += BASE_SPEED * mBase * speedFactor * jitter * (TICK_MS / 1000.0);
                 profiles[i][t + 1] = pos;
             }
         }

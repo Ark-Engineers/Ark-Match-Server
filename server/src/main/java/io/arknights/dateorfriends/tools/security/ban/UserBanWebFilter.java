@@ -3,6 +3,7 @@ package io.arknights.dateorfriends.tools.security.ban;
 import io.arknights.dateorfriends.tools.security.AuthWebFilter;
 import io.arknights.dateorfriends.tools.web.BusinessException;
 import io.arknights.dateorfriends.tools.web.ErrorCode;
+import io.arknights.dateorfriends.tools.web.IpUtils;
 import java.nio.charset.StandardCharsets;
 import org.springframework.core.annotation.Order;
 import org.springframework.http.HttpStatus;
@@ -39,10 +40,10 @@ public class UserBanWebFilter implements WebFilter {
     private Mono<Void> write(ServerWebExchange exchange, HttpStatus status, ErrorCode errorCode, String message, Object data) {
         exchange.getResponse().setStatusCode(status);
         exchange.getResponse().getHeaders().setContentType(MediaType.APPLICATION_JSON);
-        var safeMessage = escapeJson(message == null ? "" : message);
+        var safeMessage = escapeJson(IpUtils.maskInText(message == null ? "" : message));
         String dataJson = "null";
         if (data instanceof BanBlockInfo info) {
-            var reason = info.reason() == null ? "null" : "\"" + escapeJson(info.reason()) + "\"";
+            var reason = info.reason() == null ? "null" : "\"" + escapeJson(IpUtils.maskInText(info.reason())) + "\"";
             var effectiveAt = info.effectiveAt() == null ? "null" : "\"" + escapeJson(info.effectiveAt().toString()) + "\"";
             var expiresAt = info.expiresAt() == null ? "null" : "\"" + escapeJson(info.expiresAt().toString()) + "\"";
             var remainingSeconds = info.remainingSeconds() == null ? "null" : String.valueOf(info.remainingSeconds());

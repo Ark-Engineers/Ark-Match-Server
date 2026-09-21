@@ -3,7 +3,6 @@ package io.arknights.dateorfriends.modules.user.online.ws;
 import io.arknights.dateorfriends.modules.user.online.service.OnlineRoomService;
 import io.arknights.dateorfriends.tools.jwt.JwtPrincipal;
 import io.arknights.dateorfriends.tools.jwt.JwtService;
-import io.arknights.dateorfriends.tools.jwt.JwtTokenType;
 import io.arknights.dateorfriends.tools.security.token.RedisTokenStore;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
@@ -30,6 +29,8 @@ import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 import reactor.core.publisher.Sinks;
 import reactor.core.scheduler.Schedulers;
+
+import static io.arknights.dateorfriends.modules.user.online.ws.OnlineWsUtils.*;
 
 @Component
 public class OnlineWebSocketHandlerV2 implements WebSocketHandler {
@@ -98,7 +99,7 @@ public class OnlineWebSocketHandlerV2 implements WebSocketHandler {
         if (token == null || token.isBlank()) {
             return session.close(CloseStatus.POLICY_VIOLATION);
         }
-        return validateToken(token)
+        return validateAccessToken(jwtService, tokenStore, token)
                 .flatMap(principal -> {
                     var sink = Sinks.many().unicast().<String>onBackpressureBuffer();
                     var ctx = new ConnCtx(session, sink, principal);
@@ -544,92 +545,6 @@ public class OnlineWebSocketHandlerV2 implements WebSocketHandler {
         }
     }
 
-    private Mono<JwtPrincipal> validateToken(String token) {
-        JwtPrincipal principal;
-        try {
-            principal = jwtService.parseAndValidate(token, JwtTokenType.ACCESS);
-        } catch (Exception e) {
-            return Mono.error(new IllegalStateException("invalid token"));
-        }
-        return tokenStore.isBlacklisted(principal.jti())
-                .flatMap(blacklisted -> {
-                    if (Boolean.TRUE.equals(blacklisted)) return Mono.error(new IllegalStateException("token revoked"));
-                    return tokenStore.getTokenVersion(principal.userId()).flatMap(ver -> {
-                        if (ver != principal.tokenVersion()) return Mono.error(new IllegalStateException("token revoked"));
-                        return Mono.just(principal);
-                    });
-                });
-    }
-
-    private String safeRoomId(String raw) {
-        var s = String.valueOf(raw == null ? "" : raw).trim();
-        if (s.isBlank()) s = "lobby";
-        s = s.replaceAll("[^a-zA-Z0-9_-]", "");
-        if (s.isBlank()) return "lobby";
-        if (s.length() > 32) s = s.substring(0, 32);
-        return s;
-    }
-
-    private String queryParam(URI uri, String key) {
-        var q = uri.getRawQuery();
-        if (q == null || q.isBlank()) return null;
-        for (var part : q.split("&")) {
-            if (part.isBlank()) continue;
-            var kv = part.split("=", 2);
-            var k = decode(kv[0]);
-            if (!key.equals(k)) continue;
-            return kv.length > 1 ? decode(kv[1]) : "";
-        }
-        return null;
-    }
-
-    private String decode(String s) {
-        try {
-            return java.net.URLDecoder.decode(s, StandardCharsets.UTF_8);
-        } catch (Exception e) {
-            return s;
-        }
-    }
-
-    private String toJson(Object obj) {
-        if (obj == null) return "null";
-        if (obj instanceof String s) return "\"" + escape(s) + "\"";
-        if (obj instanceof Number || obj instanceof Boolean) return String.valueOf(obj);
-        if (obj instanceof Map<?, ?> m) {
-            var sb = new StringBuilder();
-            sb.append("{");
-            var first = true;
-            for (var e : m.entrySet()) {
-                if (e.getKey() == null) continue;
-                if (!first) sb.append(",");
-                first = false;
-                sb.append("\"").append(escape(String.valueOf(e.getKey()))).append("\":");
-                sb.append(toJson(e.getValue()));
-            }
-            sb.append("}");
-            return sb.toString();
-        }
-        if (obj instanceof List<?> list) {
-            var sb = new StringBuilder();
-            sb.append("[");
-            for (var i = 0; i < list.size(); i++) {
-                if (i > 0) sb.append(",");
-                sb.append(toJson(list.get(i)));
-            }
-            sb.append("]");
-            return sb.toString();
-        }
-        return "\"" + escape(String.valueOf(obj)) + "\"";
-    }
-
-    private String escape(String s) {
-        return s.replace("\\", "\\\\")
-                .replace("\"", "\\\"")
-                .replace("\n", "\\n")
-                .replace("\r", "\\r")
-                .replace("\t", "\\t");
-    }
-
     // ---------- 赛马模式外部广播接口 ----------
 
     public boolean isUserInRoom(String roomId, long userId) {
@@ -647,59 +562,19 @@ public class OnlineWebSocketHandlerV2 implements WebSocketHandler {
     public void broadcastToRoom(String roomId, String json) {
         if (roomId == null) return;
         var room = rooms.get(roomId);
-        if (room != null) room.broadcastAll(json);
+        if (room != null) room.broadcastAll(toJson(jsonParser.parseMap(json)));
     }
 
     public void sendToUserInRoom(String roomId, long userId, String json) {
         if (roomId == null) return;
         var room = rooms.get(roomId);
         if (room == null) return;
+        var maskedJson = toJson(jsonParser.parseMap(json));
         for (var slot : room.players.values()) {
             if (slot != null && slot.state != null && slot.state.userId == userId && slot.conn != null) {
-                slot.conn.sink.tryEmitNext(json);
+                slot.conn.sink.tryEmitNext(maskedJson);
             }
         }
-    }
-
-    private double toDouble(Object v, double fallback) {
-        if (v == null) return fallback;
-        try {
-            return Double.parseDouble(String.valueOf(v));
-        } catch (Exception e) {
-            return fallback;
-        }
-    }
-
-    private int toInt(Object v, int fallback) {
-        if (v == null) return fallback;
-        try {
-            return Integer.parseInt(String.valueOf(v));
-        } catch (Exception e) {
-            return fallback;
-        }
-    }
-
-    private long toLong(Object v, long fallback) {
-        if (v == null) return fallback;
-        try {
-            return Long.parseLong(String.valueOf(v));
-        } catch (Exception e) {
-            return fallback;
-        }
-    }
-
-    private boolean toBool(Object v, boolean fallback) {
-        if (v == null) return fallback;
-        var s = String.valueOf(v);
-        if ("true".equalsIgnoreCase(s)) return true;
-        if ("false".equalsIgnoreCase(s)) return false;
-        return fallback;
-    }
-
-    private double clamp(double v, double min, double max) {
-        if (v < min) return min;
-        if (v > max) return max;
-        return v;
     }
 
     private static class RoomMeta {

@@ -8,6 +8,9 @@ public class RaceRoundDO {
     private Long id;
     private Long raceId;
     private Integer roundNo;
+    private String lineupJson;
+    private String nextLineupJson;
+    private Boolean developerControlled;
     private String status;
     private LocalDateTime betStartAt;
     private LocalDateTime betEndAt;

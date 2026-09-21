@@ -39,6 +39,34 @@ public interface UserWalletMapper {
     UserWalletDO selectByUserId(@Param("userId") long userId);
 
     @Select("""
+            SELECT
+              id,
+              user_id AS userId,
+              balance,
+              created_at AS createdAt,
+              updated_at AS updatedAt
+            FROM `user_wallet`
+            WHERE user_id = #{userId}
+            LIMIT 1
+            FOR UPDATE
+            """)
+    UserWalletDO selectByUserIdForUpdate(@Param("userId") long userId);
+
+    @Select("""
+            <script>
+            SELECT
+              user_id AS userId,
+              balance
+            FROM `user_wallet`
+            WHERE user_id IN
+            <foreach item="userId" collection="userIds" open="(" separator="," close=")">
+              #{userId}
+            </foreach>
+            </script>
+            """)
+    java.util.List<UserWalletDO> selectByUserIds(@Param("userIds") java.util.List<Long> userIds);
+
+    @Select("""
             SELECT COUNT(1)
             FROM `user_wallet`
             """)

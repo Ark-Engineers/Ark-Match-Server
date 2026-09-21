@@ -21,6 +21,21 @@ public interface RaceMapper {
     @Select("SELECT * FROM horse_race WHERE id=#{id}")
     RaceDO selectById(@Param("id") long id);
 
+    @Select("SELECT * FROM horse_race WHERE id=#{raceId} FOR UPDATE")
+    RaceDO selectByIdForUpdate(@Param("raceId") long raceId);
+
+    @Insert("""
+            INSERT INTO horse_race_control_log(race_id, round_id, admin_id, action, payload)
+            VALUES(#{raceId}, #{roundId}, #{adminId}, #{action}, #{payload})
+            """)
+    int insertControlLog(
+            @Param("raceId") long raceId,
+            @Param("roundId") Long roundId,
+            @Param("adminId") long adminId,
+            @Param("action") String action,
+            @Param("payload") String payload
+    );
+
     @Select("""
             SELECT * FROM horse_race
             WHERE room_id=#{roomId} AND status=#{status}

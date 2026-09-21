@@ -41,6 +41,10 @@ public class AdminLmdSignService {
         return "lmd.adjust|" + userId + "|" + amount + "|" + nvl(description) + "|" + ts + "|" + nonce;
     }
 
+    public String canonicalForSetBalance(long userId, long balance, long expectedBalance, String description, long ts, String nonce) {
+        return "lmd.set-balance|" + userId + "|" + balance + "|" + expectedBalance + "|" + nvl(description).trim() + "|" + ts + "|" + nonce;
+    }
+
     public String canonicalForPublish(String title, String content, long lmdAmount, String claimExpireAt, long ts, String nonce) {
         return "lmd.mail.publish|" + nvl(title) + "|" + nvl(content) + "|" + lmdAmount + "|" + nvl(claimExpireAt) + "|" + ts + "|" + nonce;
     }

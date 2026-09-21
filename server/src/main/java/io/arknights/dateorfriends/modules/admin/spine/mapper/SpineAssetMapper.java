@@ -20,18 +20,60 @@ public interface SpineAssetMapper {
 
     @Update("""
             UPDATE spine_asset
-            SET name=#{name}, type=#{type}, updated_by=#{updatedBy}
+            SET name=#{name}, type=#{type}, idle_animation=#{idleAnimation}, move_animation=#{moveAnimation}, display_scale=#{displayScale}, updated_by=#{updatedBy}
             WHERE id=#{id}
             """)
     int updateAsset(
             @Param("id") long id,
             @Param("name") String name,
             @Param("type") int type,
+            @Param("idleAnimation") String idleAnimation,
+            @Param("moveAnimation") String moveAnimation,
+            @Param("displayScale") Double displayScale,
+            @Param("updatedBy") long updatedBy
+    );
+
+    @Update("""
+            <script>
+            UPDATE spine_asset
+            <set>
+              <if test="hasName">name=#{name},</if>
+              <if test="hasType">type=#{type},</if>
+              <if test="hasIdle">idle_animation=#{idleAnimation},</if>
+              <if test="hasMove">move_animation=#{moveAnimation},</if>
+              <if test="hasScale">display_scale=#{displayScale},</if>
+              updated_by=#{updatedBy}
+            </set>
+            WHERE id=#{id}
+            </script>
+            """)
+    int updateAssetPartial(
+            @Param("id") long id,
+            @Param("name") String name,
+            @Param("hasName") boolean hasName,
+            @Param("type") int type,
+            @Param("hasType") boolean hasType,
+            @Param("idleAnimation") String idleAnimation,
+            @Param("hasIdle") boolean hasIdle,
+            @Param("moveAnimation") String moveAnimation,
+            @Param("hasMove") boolean hasMove,
+            @Param("displayScale") Double displayScale,
+            @Param("hasScale") boolean hasScale,
             @Param("updatedBy") long updatedBy
     );
 
     @Select("SELECT * FROM spine_asset WHERE id=#{id}")
     SpineAssetDO selectById(@Param("id") long id);
+
+    @Select("""
+            <script>
+            SELECT * FROM spine_asset WHERE id IN
+            <foreach collection="ids" item="id" open="(" separator="," close=")">
+              #{id}
+            </foreach>
+            </script>
+            """)
+    List<SpineAssetDO> selectByIds(@Param("ids") List<Long> ids);
 
     @Select("SELECT * FROM spine_asset WHERE asset_key=#{assetKey}")
     SpineAssetDO selectByKey(@Param("assetKey") String assetKey);

@@ -246,12 +246,12 @@ public class NoticeAdminController {
                     .append(',').append(safe(r.getActorId()))
                     .append(',').append(csvValue(r.getActorRole()))
                     .append(',').append(csvValue(r.getActionType()))
-                    .append(',').append(csvValue(r.getIp()))
+                    .append(',').append(csvValue(IpUtils.mask(r.getIp())))
                     .append(',').append(csvValue(r.getDetail()))
                     .append(',').append(csvValue(r.getCreatedAt()))
                     .append('\n');
         }
-        return sb.toString();
+        return IpUtils.maskInText(sb.toString());
     }
 
     private String safe(Object v) {

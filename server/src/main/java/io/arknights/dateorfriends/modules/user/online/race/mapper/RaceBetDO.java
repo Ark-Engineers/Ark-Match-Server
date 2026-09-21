@@ -9,7 +9,7 @@ public class RaceBetDO {
     private Long roundId;
     private Long raceId;
     private Long userId;
-    private Long participantId;
+    private Long assetId;
     private Long amount;
     private String status;
     private Long payout;

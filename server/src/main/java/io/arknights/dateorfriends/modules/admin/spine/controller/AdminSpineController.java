@@ -9,9 +9,13 @@ import io.arknights.dateorfriends.tools.web.ErrorCode;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.Size;
+import java.nio.charset.StandardCharsets;
 import java.util.List;
+import org.springframework.core.io.buffer.DataBufferUtils;
 import org.springframework.http.MediaType;
 import org.springframework.http.codec.multipart.FilePart;
+import org.springframework.http.codec.multipart.FormFieldPart;
+import org.springframework.http.codec.multipart.Part;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -36,6 +40,34 @@ public class AdminSpineController {
         var principal = exchange.<JwtPrincipal>getAttribute(AuthWebFilter.ATTR_PRINCIPAL);
         if (principal == null) throw new BusinessException(ErrorCode.UNAUTHORIZED);
         return principal;
+    }
+
+    // displayScale 绑原始 Part 而非 Double：客户端以非 text/plain 内容类型（如 octet-stream）发送时 Spring 找不到解码器会直接 415，这里自行按 UTF-8 读取解析
+    private static Mono<Double> readScaleDouble(Part part) {
+        if (part == null) return Mono.just(null);
+        if (part instanceof FormFieldPart ffp) {
+            return Mono.just(parseScale(ffp.value()));
+        }
+        return DataBufferUtils.join(part.content()).map(buffer -> {
+            try {
+                byte[] bytes = new byte[buffer.readableByteCount()];
+                buffer.read(bytes);
+                return parseScale(new String(bytes, StandardCharsets.UTF_8));
+            } finally {
+                DataBufferUtils.release(buffer);
+            }
+        });
+    }
+
+    private static Double parseScale(String raw) {
+        if (raw == null) return null;
+        var s = raw.trim();
+        if (s.isEmpty()) return null;
+        try {
+            return Double.valueOf(s);
+        } catch (NumberFormatException e) {
+            throw new BusinessException(ErrorCode.PARAM_INVALID, "displayScale 格式错误");
+        }
     }
 
     @GetMapping("/list")
@@ -63,10 +95,14 @@ public class AdminSpineController {
             @RequestPart(value = "extra", required = false) List<FilePart> extra,
             @RequestPart(value = "name", required = false) @Size(max = 128) String name,
             @RequestPart(value = "type", required = false) String type,
+            @RequestPart(value = "idleAnimation", required = false) String idleAnimation,
+            @RequestPart(value = "moveAnimation", required = false) String moveAnimation,
+            @RequestPart(value = "displayScale", required = false) Part displayScale,
             ServerWebExchange exchange
     ) {
         var principal = requirePrincipal(exchange);
-        return spineAssetService.create(principal.userId(), name, type, atlas, skel, png, extra).map(ApiResponse::ok);
+        return readScaleDouble(displayScale)
+                .flatMap(scale -> spineAssetService.create(principal.userId(), name, type, idleAnimation, moveAnimation, scale, atlas, skel, png, extra).map(ApiResponse::ok));
     }
 
     @PostMapping(value = "/import-zip", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
@@ -74,10 +110,14 @@ public class AdminSpineController {
             @RequestPart("zip") FilePart zip,
             @RequestPart(value = "name", required = false) @Size(max = 128) String name,
             @RequestPart(value = "type", required = false) String type,
+            @RequestPart(value = "idleAnimation", required = false) String idleAnimation,
+            @RequestPart(value = "moveAnimation", required = false) String moveAnimation,
+            @RequestPart(value = "displayScale", required = false) Part displayScale,
             ServerWebExchange exchange
     ) {
         var principal = requirePrincipal(exchange);
-        return spineAssetService.createFromZip(principal.userId(), name, type, zip).map(ApiResponse::ok);
+        return readScaleDouble(displayScale)
+                .flatMap(scale -> spineAssetService.createFromZip(principal.userId(), name, type, idleAnimation, moveAnimation, scale, zip).map(ApiResponse::ok));
     }
 
     @PostMapping(value = "/{id}/update", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
@@ -90,13 +130,18 @@ public class AdminSpineController {
             @RequestPart(value = "extra", required = false) List<FilePart> extra,
             @RequestPart(value = "name", required = false) @Size(max = 128) String name,
             @RequestPart(value = "type", required = false) String type,
+            @RequestPart(value = "idleAnimation", required = false) String idleAnimation,
+            @RequestPart(value = "moveAnimation", required = false) String moveAnimation,
+            @RequestPart(value = "displayScale", required = false) Part displayScale,
             ServerWebExchange exchange
     ) {
         var principal = requirePrincipal(exchange);
-        if (zip != null) {
-            return spineAssetService.updateFromZip(principal.userId(), id, name, type, zip).map(ApiResponse::ok);
-        }
-        return spineAssetService.update(principal.userId(), id, name, type, atlas, skel, png, extra).map(ApiResponse::ok);
+        return readScaleDouble(displayScale).flatMap(scale -> {
+            if (zip != null) {
+                return spineAssetService.updateFromZip(principal.userId(), id, name, type, idleAnimation, moveAnimation, scale, zip);
+            }
+            return spineAssetService.update(principal.userId(), id, name, type, idleAnimation, moveAnimation, scale, atlas, skel, png, extra);
+        }).map(ApiResponse::ok);
     }
 
     @DeleteMapping("/{id}")

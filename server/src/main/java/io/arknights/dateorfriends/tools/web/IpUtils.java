@@ -1,9 +1,32 @@
 package io.arknights.dateorfriends.tools.web;
 
+import io.netty.util.NetUtil;
+import java.util.regex.Pattern;
 import org.springframework.web.server.ServerWebExchange;
 
 public final class IpUtils {
+    private static final Pattern IPV4_LITERAL = Pattern.compile("(?<![\\p{Alnum}_.])(?:[0-9]{1,3}\\.){3}[0-9]{1,3}(?![\\p{Alnum}_]|\\.[0-9])");
+    private static final Pattern IPV6_LITERAL = Pattern.compile("(?<![\\p{Alnum}_.])(?:[0-9a-fA-F]{0,4}:){2,8}[0-9a-fA-F.]{0,45}(?:%[\\p{Alnum}_.-]+)?(?![\\p{Alnum}_:.])");
+
     private IpUtils() {
+    }
+
+    public static String mask(String ip) {
+        return ip == null || ip.isBlank() ? ip : "***";
+    }
+
+    public static String maskInText(String text) {
+        if (text == null || (text.indexOf('.') < 0 && text.indexOf(':') < 0)) return text;
+        var ipv6Masked = IPV6_LITERAL.matcher(text).replaceAll(match -> {
+            var candidate = match.group();
+            var start = candidate.startsWith(":") && !candidate.startsWith("::") ? 1 : 0;
+            var end = candidate.length();
+            while (end > start && candidate.charAt(end - 1) == '.') end--;
+            return NetUtil.isValidIpV6Address(candidate.substring(start, end))
+                    ? candidate.substring(0, start) + "***" + candidate.substring(end) : candidate;
+        });
+        return IPV4_LITERAL.matcher(ipv6Masked).replaceAll(match ->
+                NetUtil.isValidIpV4Address(match.group()) ? "***" : match.group());
     }
 
     public static String resolveClientIp(ServerWebExchange exchange) {

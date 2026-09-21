@@ -238,7 +238,7 @@ public class SpineAssetService {
         }
     }
 
-    public Mono<DetailResponse> createFromZip(long actorId, String name, String type, FilePart zip) {
+    public Mono<DetailResponse> createFromZip(long actorId, String name, String type, String idleAnimation, String moveAnimation, Double displayScale, FilePart zip) {
         if (zip == null) return Mono.error(new BusinessException(ErrorCode.PARAM_INVALID, "缺少 zip 文件"));
         var zipName = safeFilename(zip.filename());
         if (!Objects.equals(extLower(zipName), "zip")) {
@@ -247,6 +247,9 @@ public class SpineAssetService {
         var safeName = name == null ? "" : name.trim();
         if (safeName.length() > 128) return Mono.error(new BusinessException(ErrorCode.PARAM_INVALID, "name 长度需<=128"));
         var safeType = normalizeType(type);
+        var safeIdle = idleAnimation == null || idleAnimation.trim().isBlank() ? null : idleAnimation.trim();
+        var safeMove = moveAnimation == null || moveAnimation.trim().isBlank() ? null : moveAnimation.trim();
+        var safeScale = displayScale != null && displayScale > 0 ? displayScale : 1.0;
 
         return Mono.fromCallable(() -> Files.createTempDirectory("spine-zip-"))
                 .subscribeOn(Schedulers.boundedElastic())
@@ -263,6 +266,9 @@ public class SpineAssetService {
                                             asset.setAssetKey(m.assetKey());
                                             asset.setName(safeName.isBlank() ? null : safeName);
                                             asset.setType(safeType);
+                                            asset.setIdleAnimation(safeIdle);
+                                            asset.setMoveAnimation(safeMove);
+                                            asset.setDisplayScale(safeScale);
                                             asset.setCreatedBy(actorId);
                                             asset.setUpdatedBy(actorId);
                                             assetMapper.insertAsset(asset);
@@ -305,7 +311,7 @@ public class SpineAssetService {
                 });
     }
 
-    public Mono<DetailResponse> updateFromZip(long actorId, long id, String name, String type, FilePart zip) {
+    public Mono<DetailResponse> updateFromZip(long actorId, long id, String name, String type, String idleAnimation, String moveAnimation, Double displayScale, FilePart zip) {
         if (zip == null) return Mono.error(new BusinessException(ErrorCode.PARAM_INVALID, "缺少 zip 文件"));
         var zipName = safeFilename(zip.filename());
         if (!Objects.equals(extLower(zipName), "zip")) {
@@ -314,6 +320,9 @@ public class SpineAssetService {
         var safeName = name == null ? "" : name.trim();
         if (safeName.length() > 128) return Mono.error(new BusinessException(ErrorCode.PARAM_INVALID, "name 长度需<=128"));
         var safeType = normalizeType(type);
+        var safeIdle = idleAnimation == null || idleAnimation.trim().isBlank() ? null : idleAnimation.trim();
+        var safeMove = moveAnimation == null || moveAnimation.trim().isBlank() ? null : moveAnimation.trim();
+        var safeScale = displayScale != null && displayScale > 0 ? displayScale : 1.0;
 
         return Mono.fromCallable(() -> Files.createTempDirectory("spine-zip-"))
                 .subscribeOn(Schedulers.boundedElastic())
@@ -331,7 +340,7 @@ public class SpineAssetService {
                                                 throw new BusinessException(ErrorCode.PARAM_INVALID, "zip 内资源 key 与当前资源不一致");
                                             }
 
-                                            assetMapper.updateAsset(id, safeName.isBlank() ? null : safeName, safeType, actorId);
+                                            assetMapper.updateAsset(id, safeName.isBlank() ? null : safeName, safeType, safeIdle, safeMove, safeScale, actorId);
 
                                             deletePathQuietly(assetDir(assetKey));
                                             try {
@@ -423,7 +432,7 @@ public class SpineAssetService {
                 .subscribeOn(Schedulers.boundedElastic());
     }
 
-    public Mono<DetailResponse> create(long actorId, String name, String type, FilePart atlas, FilePart skel, List<FilePart> pngs, List<FilePart> extras) {
+    public Mono<DetailResponse> create(long actorId, String name, String type, String idleAnimation, String moveAnimation, Double displayScale, FilePart atlas, FilePart skel, List<FilePart> pngs, List<FilePart> extras) {
         if (atlas == null || skel == null) return Mono.error(new BusinessException(ErrorCode.PARAM_INVALID, "缺少 atlas/skel 文件"));
         if (pngs == null || pngs.isEmpty()) return Mono.error(new BusinessException(ErrorCode.PARAM_INVALID, "缺少 png 文件"));
 
@@ -442,6 +451,9 @@ public class SpineAssetService {
         var safeName = name == null ? "" : name.trim();
         if (safeName.length() > 128) return Mono.error(new BusinessException(ErrorCode.PARAM_INVALID, "name 长度需<=128"));
         var safeType = normalizeType(type);
+        var safeIdle = idleAnimation == null || idleAnimation.trim().isBlank() ? null : idleAnimation.trim();
+        var safeMove = moveAnimation == null || moveAnimation.trim().isBlank() ? null : moveAnimation.trim();
+        var safeScale = displayScale != null && displayScale > 0 ? displayScale : 1.0;
 
         var allFiles = new ArrayList<FilePart>();
         allFiles.add(atlas);
@@ -458,6 +470,9 @@ public class SpineAssetService {
                                 asset.setAssetKey(assetKey);
                                 asset.setName(safeName.isBlank() ? null : safeName);
                                 asset.setType(safeType);
+                                asset.setIdleAnimation(safeIdle);
+                                asset.setMoveAnimation(safeMove);
+                                asset.setDisplayScale(safeScale);
                                 asset.setCreatedBy(actorId);
                                 asset.setUpdatedBy(actorId);
                                 assetMapper.insertAsset(asset);
@@ -480,10 +495,19 @@ public class SpineAssetService {
                         ));
     }
 
-    public Mono<DetailResponse> update(long actorId, long id, String name, String type, FilePart atlas, FilePart skel, List<FilePart> pngs, List<FilePart> extras) {
-        var safeName = name == null ? "" : name.trim();
-        if (safeName.length() > 128) return Mono.error(new BusinessException(ErrorCode.PARAM_INVALID, "name 长度需<=128"));
-        var safeType = normalizeType(type);
+    public Mono<DetailResponse> update(long actorId, long id, String name, String type, String idleAnimation, String moveAnimation, Double displayScale, FilePart atlas, FilePart skel, List<FilePart> pngs, List<FilePart> extras) {
+        // 部分更新：未传的字段保持原值；传了但为空的 name/动画视为清除；缩放<=0 视为 1.0
+        var hasName = name != null;
+        var safeName = name == null ? null : name.trim();
+        if (safeName != null && safeName.length() > 128) return Mono.error(new BusinessException(ErrorCode.PARAM_INVALID, "name 长度需<=128"));
+        var hasType = type != null;
+        var safeType = type == null ? 0 : normalizeType(type);
+        var hasIdle = idleAnimation != null;
+        var safeIdle = idleAnimation == null ? null : (idleAnimation.trim().isBlank() ? null : idleAnimation.trim());
+        var hasMove = moveAnimation != null;
+        var safeMove = moveAnimation == null ? null : (moveAnimation.trim().isBlank() ? null : moveAnimation.trim());
+        var hasScale = displayScale != null;
+        var safeScale = displayScale == null ? null : (displayScale > 0 ? displayScale : 1.0);
 
         var hasFileUpdate = atlas != null || skel != null || (pngs != null && !pngs.isEmpty()) || (extras != null && !extras.isEmpty());
 
@@ -493,7 +517,7 @@ public class SpineAssetService {
                     if (asset == null) return Mono.error(new BusinessException(ErrorCode.PARAM_INVALID, "资源不存在"));
                     var assetKey = asset.getAssetKey();
                     return Mono.fromCallable(() -> {
-                                assetMapper.updateAsset(id, safeName.isBlank() ? null : safeName, safeType, actorId);
+                                assetMapper.updateAssetPartial(id, safeName, hasName, safeType, hasType, safeIdle, hasIdle, safeMove, hasMove, safeScale, hasScale, actorId);
                                 return 1;
                             })
                             .subscribeOn(Schedulers.boundedElastic())

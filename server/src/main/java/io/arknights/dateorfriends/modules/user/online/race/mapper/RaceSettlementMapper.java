@@ -11,10 +11,10 @@ public interface RaceSettlementMapper {
 
     @Insert("""
             <script>
-            INSERT INTO horse_race_settlement(round_id, user_id, participant_id, rank_no, bet_amount, payout)
+            INSERT INTO horse_race_settlement(round_id, user_id, asset_id, rank_no, bet_amount, payout)
             VALUES
             <foreach collection="list" item="s" separator=",">
-              (#{s.roundId}, #{s.userId}, #{s.participantId}, #{s.rankNo}, #{s.betAmount}, #{s.payout})
+              (#{s.roundId}, #{s.userId}, #{s.assetId}, #{s.rankNo}, #{s.betAmount}, #{s.payout})
             </foreach>
             </script>
             """)

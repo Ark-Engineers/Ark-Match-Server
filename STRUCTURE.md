@@ -46,6 +46,7 @@ dateOrFriends/
               verify/
               web/
                 ApiResponse.java
+                ApiResponseSerializer.java
                 BusinessException.java
                 ErrorCode.java
                 GlobalExceptionHandler.java
@@ -156,8 +157,6 @@ dateOrFriends/
                     mapper/
                       RaceDO.java
                       RaceMapper.java
-                      RaceParticipantDO.java
-                      RaceParticipantMapper.java
                       RaceRoundDO.java
                       RaceRoundMapper.java
                       RaceBetDO.java
@@ -201,6 +200,11 @@ dateOrFriends/
               2026-09-20_horse_race.sql
               2026-09-20_lmd_wallet.sql
               2026-09-20_spine_type.sql
+              2026-09-21_horse_race_developer_console.sql
+              2026-09-21_spine_animations.sql
+              2026-09-22_race_drop_participant.sql
+              2026-09-22_race_drop_participant_continue.sql
+              2026-09-22_spine_race_anim_config.sql
             modules/
               admin/
                 ban.sql

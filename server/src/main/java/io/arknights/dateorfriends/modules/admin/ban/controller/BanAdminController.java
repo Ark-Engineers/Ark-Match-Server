@@ -9,6 +9,7 @@ import io.arknights.dateorfriends.tools.security.ban.BanService;
 import io.arknights.dateorfriends.tools.web.ApiResponse;
 import io.arknights.dateorfriends.tools.web.BusinessException;
 import io.arknights.dateorfriends.tools.web.ErrorCode;
+import io.arknights.dateorfriends.tools.web.IpUtils;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
@@ -299,7 +300,7 @@ public class BanAdminController {
         for (var r : list) {
             sb.append(safe(r.getId()))
                     .append(',').append(safe(r.getTargetType()))
-                    .append(',').append(safe(r.getTargetValue()))
+                    .append(',').append(safe("IP".equalsIgnoreCase(r.getTargetType()) ? IpUtils.mask(r.getTargetValue()) : r.getTargetValue()))
                     .append(',').append(safe(r.getBannedUserId()))
                     .append(',').append(safe(r.getAdminId()))
                     .append(',').append(csvValue(r.getReason()))
@@ -314,7 +315,7 @@ public class BanAdminController {
                     .append(',').append(safe(r.getUpdatedAt()))
                     .append('\n');
         }
-        return sb.toString();
+        return IpUtils.maskInText(sb.toString());
     }
 
     private String safe(Object v) {

@@ -77,13 +77,13 @@ app:
       expire-sweep-fixed-delay-ms: 60000
       sync-active-bans-fixed-delay-ms: 300000
   lmd:
-    # 生产环境必须通过环境变量注入；不配置则龙门币写操作全部拒绝（fail-closed）
-    sign-secret: ${LMD_SIGN_SECRET:}
+    # 已直接写入配置（如需对外分发代码，建议改回环境变量注入：${LMD_SIGN_SECRET:}）
+    sign-secret: c8e97fb204af07c598c1086f3ced5d87dd52056674f6e587a832ddbc8e9ce3ec
     sign-ts-window-seconds: 300
     verify-cron: "0 30 4 * * ?"
   race:
-    # 生产环境必须通过环境变量注入 Base64 编码的 32 字节密钥；不配置则启动失败（fail-closed）
-    secret: ${RACE_SECRET:}
+    # 已直接写入配置（如需对外分发代码，建议改回环境变量注入：${RACE_SECRET:}）
+    secret: /za/kKaHDmtqtPPW/fNx0s3vHNEU/upmiXAzcKRWtRA=
     secret-required: true
     scheduler-enabled: true
     tick-fixed-delay-ms: 1000

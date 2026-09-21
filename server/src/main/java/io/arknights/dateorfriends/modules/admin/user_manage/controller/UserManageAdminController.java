@@ -7,6 +7,7 @@ import io.arknights.dateorfriends.modules.admin.user_manage.mapper.UserManageOpe
 import io.arknights.dateorfriends.modules.admin.user_manage.mapper.UserManageOperationLogMapper;
 import io.arknights.dateorfriends.modules.admin.auth.service.TokenAdminService;
 import io.arknights.dateorfriends.modules.user.auth.mapper.UserMapper;
+import io.arknights.dateorfriends.modules.user.lmd.mapper.UserWalletMapper;
 import io.arknights.dateorfriends.modules.user.notification.service.SiteNotificationService;
 import io.arknights.dateorfriends.tools.jwt.JwtPrincipal;
 import io.arknights.dateorfriends.tools.security.AuthWebFilter;
@@ -22,6 +23,7 @@ import java.nio.charset.StandardCharsets;
 import java.security.SecureRandom;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
+import java.util.HashMap;
 import java.util.List;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
@@ -50,6 +52,7 @@ public class UserManageAdminController {
     private final AdminRoleOperationLogMapper adminRoleOperationLogMapper;
     private final UserManageOperationLogMapper userManageOperationLogMapper;
     private final SiteNotificationService notificationService;
+    private final UserWalletMapper walletMapper;
 
     public UserManageAdminController(
             UserMapper userMapper,
@@ -59,7 +62,8 @@ public class UserManageAdminController {
             BanRecordMapper banRecordMapper,
             AdminRoleOperationLogMapper adminRoleOperationLogMapper,
             UserManageOperationLogMapper userManageOperationLogMapper,
-            SiteNotificationService notificationService
+            SiteNotificationService notificationService,
+            UserWalletMapper walletMapper
     ) {
         this.userMapper = userMapper;
         this.passwordEncoder = passwordEncoder;
@@ -69,6 +73,7 @@ public class UserManageAdminController {
         this.adminRoleOperationLogMapper = adminRoleOperationLogMapper;
         this.userManageOperationLogMapper = userManageOperationLogMapper;
         this.notificationService = notificationService;
+        this.walletMapper = walletMapper;
     }
 
     public record PageResponse<T>(long total, int page, int size, List<T> items) {
@@ -90,7 +95,8 @@ public class UserManageAdminController {
             LocalDateTime createdAt,
             LocalDateTime updatedAt,
             Integer deleted,
-            LocalDateTime deletedAt
+            LocalDateTime deletedAt,
+            long lmdBalance
     ) {
     }
 
@@ -155,6 +161,13 @@ public class UserManageAdminController {
         return Mono.fromCallable(() -> {
                     var total = userMapper.countForAdmin(safeAccount, safeNickname, safeRole, safeStatus, safeKeyword, from, to, safeIncludeDeleted);
                     var list = userMapper.selectListForAdmin(safeAccount, safeNickname, safeRole, safeStatus, safeKeyword, from, to, safeIncludeDeleted, safeSize, offset);
+                    var balances = new HashMap<Long, Long>();
+                    if (!list.isEmpty()) {
+                        var userIds = list.stream().map(u -> u.getId()).toList();
+                        for (var wallet : walletMapper.selectByUserIds(userIds)) {
+                            balances.put(wallet.getUserId(), wallet.getBalance() == null ? 0L : wallet.getBalance());
+                        }
+                    }
                     var items = list.stream()
                             .map(u -> new UserItem(
                                     u.getId() == null ? 0 : u.getId(),
@@ -172,7 +185,8 @@ public class UserManageAdminController {
                                     u.getCreatedAt(),
                                     u.getUpdatedAt(),
                                     u.getDeleted(),
-                                    u.getDeletedAt()
+                                    u.getDeletedAt(),
+                                    balances.getOrDefault(u.getId(), 0L)
                             ))
                             .toList();
                     return new PageResponse<>(total, safePage, safeSize, items);
@@ -187,11 +201,12 @@ public class UserManageAdminController {
         assertAdmin(principal);
         if (id <= 0) return Mono.error(new BusinessException(ErrorCode.PARAM_INVALID));
 
-        return Mono.fromCallable(() -> userMapper.selectById(id))
-                .subscribeOn(Schedulers.boundedElastic())
-                .flatMap(u -> {
-                    if (u == null) return Mono.error(new BusinessException(ErrorCode.USER_NOT_FOUND));
-                    return Mono.just(ApiResponse.ok(new UserItem(
+        return Mono.fromCallable(() -> {
+                    var u = userMapper.selectByIdForAdmin(id);
+                    if (u == null) throw new BusinessException(ErrorCode.USER_NOT_FOUND);
+                    var wallet = walletMapper.selectByUserId(id);
+                    long balance = wallet == null || wallet.getBalance() == null ? 0L : wallet.getBalance();
+                    return new UserItem(
                             u.getId() == null ? 0 : u.getId(),
                             u.getAccount(),
                             u.getEmail(),
@@ -207,9 +222,12 @@ public class UserManageAdminController {
                             u.getCreatedAt(),
                             u.getUpdatedAt(),
                             u.getDeleted(),
-                            u.getDeletedAt()
-                    )));
-                });
+                            u.getDeletedAt(),
+                            balance
+                    );
+                })
+                .subscribeOn(Schedulers.boundedElastic())
+                .map(ApiResponse::ok);
     }
 
     @PostMapping("/update-profile")
@@ -810,13 +828,13 @@ public class UserManageAdminController {
                     .append(',').append(safe(r.getActorRole()))
                     .append(',').append(safe(r.getTargetUserId()))
                     .append(',').append(safe(r.getActionType()))
-                    .append(',').append(safe(r.getIp()))
+                    .append(',').append(safe(IpUtils.mask(r.getIp())))
                     .append(',').append(csvValue(r.getDetail()))
                     .append(',').append(csvValue(r.getDiffJson()))
                     .append(',').append(safe(r.getCreatedAt()))
                     .append('\n');
         }
-        return sb.toString();
+        return IpUtils.maskInText(sb.toString());
     }
 
     private String safe(Object v) {

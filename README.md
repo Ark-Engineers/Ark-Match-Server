@@ -197,6 +197,9 @@ java -jar server/target/server-0.0.1-SNAPSHOT.jar --server.port=0
 - 返回结构：`{ code, message, data }`
   - `code=0`：成功
   - `code!=0`：失败
+- IP 隐私：业务响应中的 IPv4/IPv6 统一返回 `***`（空值保持不变），管理员及超级管理员也不例外；覆盖 IP 字段、关联 IP 列表、IP 封禁目标、日志/错误文本、CSV 导出及 WebSocket 文本消息。
+  - 脱敏仅发生在响应输出边界，数据库、Redis、风控、封禁匹配和审计存储仍使用原始 IP。
+  - 关联 IP 封禁按用户 ID 执行，解禁按封禁记录 ID 执行；前端不能将 `***` 作为真实 IP 回传。
 - 常用错误码（见 [ErrorCode.java](file:///c:/Users/MrLee/Desktop/%E7%BD%97%E5%BE%B7%E4%B9%8B%E9%97%A8/%E7%A8%8B%E5%BA%8F/dateOrFriends/server/src/main/java/io/arknights/dateorfriends/tools/web/ErrorCode.java)）
   - `1000` 参数不合法
   - `1001` 未登录或令牌无效
@@ -565,7 +568,7 @@ app:
 ### 11.15 horse_race（赛马模式实例）
 
 - SQL：[horse_race.sql](file:///c:/Users/MrLee/Desktop/%E7%BD%97%E5%BE%B7%E4%B9%8B%E9%97%A8/%E7%A8%8B%E5%BA%8F/dateOrFriends/server/src/main/resources/sql/modules/user/horse_race.sql)
-- 增量 SQL（服务器已有库执行）：[2026-09-20_horse_race.sql](file:///c:/Users/MrLee/Desktop/%E7%BD%97%E5%BE%B7%E4%B9%8B%E9%97%A8/%E7%A8%8B%E5%BA%8F/dateOrFriends/server/src/main/resources/sql/incremental/2026-09-20_horse_race.sql)
+- 增量 SQL（服务器已有库执行）：[2026-09-20_horse_race.sql](file:///c:/Users/MrLee/Desktop/%E7%BD%97%E5%BE%B7%E4%B9%8B%E9%97%A8/%E7%A8%8B%E5%BA%8F/dateOrFriends/server/src/main/resources/sql/incremental/2026-09-20_horse_race.sql)、[2026-09-22_race_drop_participant.sql](file:///c:/Users/MrLee/Desktop/%E7%BD%97%E5%BE%B7%E4%B9%8B%E9%97%A8/%E7%A8%8B%E5%BA%8F/dateOrFriends/server/src/main/resources/sql/incremental/2026-09-22_race_drop_participant.sql)（删除参赛者表，参赛对象改为直接引用 spine_asset）、[2026-09-22_race_drop_participant_continue.sql](file:///c:/Users/MrLee/Desktop/%E7%BD%97%E5%BE%B7%E4%B9%8B%E9%97%A8/%E7%A8%8B%E5%BA%8F/dateOrFriends/server/src/main/resources/sql/incremental/2026-09-22_race_drop_participant_continue.sql)（断点续跑版：适用于已执行过 09-22 脚本第 1 步的库，含 settlement 唯一键重建修正）、[2026-09-22_spine_race_anim_config.sql](file:///c:/Users/MrLee/Desktop/%E7%BD%97%E5%BE%B7%E4%B9%8B%E9%97%A8/%E7%A8%8B%E5%BA%8F/dateOrFriends/server/src/main/resources/sql/incremental/2026-09-22_spine_race_anim_config.sql)（按 skel 实际动画名写入敌人/Boss 待机与移动动画，可重复执行）
 
 | 字段 | 类型 | 备注 |
 |---|---|---|
@@ -585,26 +588,7 @@ app:
 - `idx_horse_race_room(room_id, status)`：按房间+状态查当前实例。
 - `idx_horse_race_status(status)`：调度器按状态扫描。
 
-### 11.16 horse_race_participant（赛马参赛对象）
-
-- SQL：[horse_race.sql](file:///c:/Users/MrLee/Desktop/%E7%BD%97%E5%BE%B7%E4%B9%8B%E9%97%A8/%E7%A8%8B%E5%BA%8F/dateOrFriends/server/src/main/resources/sql/modules/user/horse_race.sql)
-
-| 字段 | 类型 | 备注 |
-|---|---|---|
-| id | BIGINT | 主键，自增 |
-| race_id | BIGINT | 模式ID（horse_race.id） |
-| sort_no | INT | 道次（1-5） |
-| spine_asset_id | BIGINT | Spine资产ID（spine_asset.id） |
-| asset_key | VARCHAR(64) | 资源标识（冗余，前端加载用） |
-| name | VARCHAR(128) NULL | 展示名称（可为空） |
-| type | TINYINT | 对象类型（冗余自 spine_asset.type）：2=敌人；3=Boss |
-| created_at | DATETIME | 创建时间 |
-
-常用索引（详见 SQL）：
-- `uk_horse_race_participant_race_sort(race_id, sort_no)`：同模式内道次唯一。
-- `uk_horse_race_participant_race_asset(race_id, spine_asset_id)`：同模式内参赛对象不重复。
-
-### 11.17 horse_race_round（赛马轮次）
+### 11.16 horse_race_round（赛马轮次）
 
 - SQL：[horse_race.sql](file:///c:/Users/MrLee/Desktop/%E7%BD%97%E5%BE%B7%E4%B9%8B%E9%97%A8/%E7%A8%8B%E5%BA%8F/dateOrFriends/server/src/main/resources/sql/modules/user/horse_race.sql)
 
@@ -613,12 +597,15 @@ app:
 | id | BIGINT | 主键，自增 |
 | race_id | BIGINT | 模式ID（horse_race.id） |
 | round_no | INT | 场次序号（从1递增） |
+| lineup_json | TEXT NULL | 本场参赛名单（spine_asset.id 的 JSON 数组，按道次排序）；参赛对象不建表，动画/缩放随 spine_asset 配置读取 |
+| next_lineup_json | TEXT NULL | 下一场指定名单（spine_asset.id 的 JSON 数组）；未指定时按模式规则自动确定：无限循环随机模式重新随机 5 名，其余沿用本场名单 |
+| developer_controlled | TINYINT | 是否指定排名的演示场；为1时服务端禁止下注 |
 | status | VARCHAR(16) | 轮次状态：BETTING=竞猜中；RACING=比赛中；PODIUM=领奖台；FINISHED=已结束 |
 | bet_start_at | DATETIME | 竞猜开始时间 |
 | bet_end_at | DATETIME | 竞猜结束时间（比赛前30秒关闭通道：race_start_at=bet_end_at+30秒） |
 | race_start_at | DATETIME | 比赛开始时间（前端动画起点，高精度时间戳同步基准） |
-| podium_end_at | DATETIME | 领奖台结束时间（race_start_at+120秒） |
-| seed | VARCHAR(32) NULL | 动画随机种子（hex；比赛开始前30秒生成并广播，赛前为NULL） |
+| podium_end_at | DATETIME | 领奖台结束时间（初始 race_start_at+120秒；结算后按实际结算时间+60秒） |
+| seed | VARCHAR(32) NULL | 动画随机种子（hex；演示名次可提前生成，BETTING 阶段接口不下发） |
 | result_cipher | TEXT NULL | 名次结果密文（AES-GCM；仅服务端解密，任何阶段不传输前端） |
 | result_commit | VARCHAR(64) NULL | 名次承诺（SHA-256(result_json\|seed\|round_id)，赛后公平性核验） |
 | total_pool | BIGINT | 本场竞猜总池（=本场全部下注之和） |
@@ -632,7 +619,7 @@ app:
 - `uk_horse_race_round_no(race_id, round_no)`：同模式内场次序号唯一。
 - `idx_horse_race_round_status(status)`：调度器按状态扫描。
 
-### 11.18 horse_race_bet（赛马下注明细）
+### 11.17 horse_race_bet（赛马下注明细）
 
 - SQL：[horse_race.sql](file:///c:/Users/MrLee/Desktop/%E7%BD%97%E5%BE%B7%E4%B9%8B%E9%97%A8/%E7%A8%8B%E5%BA%8F/dateOrFriends/server/src/main/resources/sql/modules/user/horse_race.sql)
 
@@ -642,7 +629,7 @@ app:
 | round_id | BIGINT | 轮次ID（horse_race_round.id） |
 | race_id | BIGINT | 模式ID（冗余，便于按模式统计） |
 | user_id | BIGINT | 下注用户ID（user.id） |
-| participant_id | BIGINT | 下注对象ID（horse_race_participant.id） |
+| asset_id | BIGINT | 下注对象ID（spine_asset.id） |
 | amount | BIGINT | 下注金额（龙门币，>=1；单用户单场总额100-3000由服务层校验） |
 | status | VARCHAR(16) | 状态：ACTIVE=有效；WON=中奖；LOST=未中；REFUNDED=已退款 |
 | payout | BIGINT NULL | 中奖奖金（status=WON 时非空） |
@@ -652,8 +639,9 @@ app:
 常用索引（详见 SQL）：
 - `idx_horse_race_bet_round(round_id, status)`：按轮次结算。
 - `idx_horse_race_bet_user(user_id, round_id)`：按用户查单场下注。
+- `idx_horse_race_bet_asset(round_id, asset_id)`：按轮次+对象统计奖金池。
 
-### 11.19 horse_race_settlement（赛马结算台账）
+### 11.18 horse_race_settlement（赛马结算台账）
 
 - SQL：[horse_race.sql](file:///c:/Users/MrLee/Desktop/%E7%BD%97%E5%BE%B7%E4%B9%8B%E9%97%A8/%E7%A8%8B%E5%BA%8F/dateOrFriends/server/src/main/resources/sql/modules/user/horse_race.sql)
 
@@ -662,14 +650,33 @@ app:
 | id | BIGINT | 主键，自增 |
 | round_id | BIGINT | 轮次ID（horse_race_round.id） |
 | user_id | BIGINT | 中奖用户ID（user.id） |
-| participant_id | BIGINT | 中奖对象ID（horse_race_participant.id） |
+| asset_id | BIGINT | 中奖对象ID（spine_asset.id） |
 | rank_no | TINYINT | 名次（1/2/3） |
 | bet_amount | BIGINT | 该用户在该对象上的下注总额 |
 | payout | BIGINT | 实际发放奖金（平分后金额） |
 | created_at | DATETIME | 结算时间 |
 
 常用索引（详见 SQL）：
-- `uk_horse_race_settlement(round_id, user_id, participant_id)`：同轮次同用户同对象仅一条。
+- `uk_horse_race_settlement(round_id, user_id, asset_id)`：同轮次同用户同对象仅一条。
+
+### 11.19 horse_race_control_log（赛马控制审计）
+
+- SQL：[horse_race.sql](server/src/main/resources/sql/modules/user/horse_race.sql)
+- 增量 SQL：[2026-09-21_horse_race_developer_console.sql](server/src/main/resources/sql/incremental/2026-09-21_horse_race_developer_console.sql)
+
+| 字段 | 类型 | 备注 |
+|---|---|---|
+| id | BIGINT | 主键，自增 |
+| race_id | BIGINT | 模式ID |
+| round_id | BIGINT NULL | 轮次ID |
+| admin_id | BIGINT | 操作管理员ID |
+| action | VARCHAR(32) | 操作类型（SET_RANKING / NEXT_PARTICIPANTS / START_NOW / SETTLE_NOW / END_PODIUM / CLOSE_REFUND） |
+| payload | TEXT NULL | 操作参数；排名操作只记录承诺值，不记录明文排名 |
+| created_at | DATETIME | 操作时间 |
+
+常用索引（详见 SQL）：
+- `idx_horse_race_control_log_race(race_id)`：按模式查询操作记录。
+- `idx_horse_race_control_log_round(round_id)`：按轮次查询操作记录。
 
 ## 12. 测试说明
 
@@ -683,6 +690,7 @@ app:
 ### 13.1 功能概览
 
 - 每个用户一个钱包（`user_wallet`），余额永不为负；每次余额变动必须同事务写入 `lmd_transaction` 流水（含变动后余额、溯源ID、来源IP）。
+- 管理端用户管理（`/admin/m/1`）展示龙门币余额；点击余额或“更多 → 龙门币管理 / 流水”可增加、扣除或设置余额，并按类型分页查看该用户流水。调整需填写原因并二次确认，成功后刷新余额与流水。
 - 管理员发布带龙门币的系统通知邮件（`/admin/lmd/mail/publish`），可设置领取截止时间或永久有效；每封邮件每个用户仅可领取一次，领取后自动标记已领取；过期自动失效。
 - 用户领取采用“一次性票据”流程：先 `POST /user/lmd/mail/claim-ticket` 换取 Redis 票据（5 分钟有效），再凭票据 `POST /user/lmd/mail/claim` 完成入账；双重请求均限流。
 - 账面校验：支持管理员手动全量/单用户校验（余额 vs 流水求和），并有每日凌晨定时自动校验（只告警，不自动修复）。
@@ -707,11 +715,14 @@ app:
 
 ### 13.4 管理端接口（/admin/lmd，仅 ADMIN/SUPER_ADMIN）
 
-- `GET /admin/lmd/transactions`：全量流水审计（分页/筛选，含溯源ID与IP；限流 60/分钟）
-- `POST /admin/lmd/adjust`：调整用户余额（正负均可；需 HMAC 签名；限流 30/分钟）
+- `GET /admin/lmd/transactions`：全量流水审计（支持 `userId/type/refType/page/size` 筛选分页，含溯源ID与IP；限流 60/分钟）
+- `POST /admin/lmd/adjust`：增减用户余额（`userId/amount/description/ts/nonce/sign`；非零整数且单次绝对值不超过 10,000,000；需 HMAC 签名；限流 30/分钟）
+- `POST /admin/lmd/set-balance`：设置指定余额（`userId/balance/expectedBalance/description/ts/nonce/sign`；余额为非负安全整数，单次实际变动绝对值不超过 10,000,000 且不可为零；与增减接口共用限流）。事务内锁定钱包并校验 `expectedBalance`，余额已变化则拒绝，由管理员刷新后重新确认；成功写入 `ADMIN_ADJUST` 流水。签名原文为 `lmd.set-balance|userId|balance|expectedBalance|trim(description)|ts|nonce`。
 - `POST /admin/lmd/mail/publish`：发布带龙门币的通知邮件（需 HMAC 签名；限流 10/分钟）
 - `GET /admin/lmd/mail/claims`：邮件领取记录审计（分页/筛选）
 - `GET /admin/lmd/verify`：触发账面校验（全量或指定用户）
+- `GET /admin/user-manage/users`、`GET /admin/user-manage/users/{id}`：用户列表和详情增加 `lmdBalance`；未创建钱包的用户余额为 0，列表按当前分页批量查询余额。
+- 余额调整权限与用户管理一致：ADMIN 仅能操作 USER，SUPER_ADMIN 可操作 USER/ADMIN；禁止调整超级管理员及已注销账号，查看余额和流水仍允许。
 
 ### 13.5 安全机制
 
@@ -724,16 +735,16 @@ app:
 
 ## 14. 赛马竞猜系统（Horse Race）
 
-联机房间（/ws/online）内的竞猜玩法：管理员在房间创建赛马模式，房内玩家用龙门币下注 5 名敌人/Boss 参赛者的名次，赛后按 60/30/10 分成自动结算并通知。
+联机房间（/ws/online）内的竞猜玩法：管理员在房间创建赛马模式，房内玩家用龙门币下注 5 名敌人/Boss 参赛者的名次，赛后按位置彩池规则（前三名均中奖、无抽水）自动结算并通知。
 
 ### 14.1 功能概览
 
-- 权限与配置：仅管理员可创建/关闭；每房间同一时间仅一个进行中实例；竞猜开始/结束时间可配置且间隔 >= 60 秒；场次类型三种（一次性/限定场次数量/无限循环）；参赛对象支持手动选择 5 名或从敌人/Boss 资产随机 5 名。
-- 下注：仅房间内成员、仅龙门币；单用户单场总额 100~3000，可为不同参赛者分别下注；普通敌人可重复下注，Boss 不可重复下注；比赛开始前 30 秒自动关闭下注通道；奖池实时汇总并全房间广播。
-- 公平性：每轮名次在比赛开始前由服务端 `SecureRandom` 独立生成，仅以 AES-256-GCM 密文落库并附 SHA-256 承诺，任何阶段不传输前端；前端只收到 8 位 hex 动画种子与开赛时间戳，用与后端逐位一致的确定性模拟器（mulberry32 + 拒绝采样，见 `RaceSimulator.java` / 前端 `utils/raceSim.ts`）重建 60 秒动画，冲线名次与后端名次 100% 一致；参赛者速度限定区间内随机（BASE_SPEED×[1.03,1.15]×[0.98,1.02]），51~59 秒陆续冲线。
-- 结算：第一名 60%、第二名 30%、第三名 10%；同对象多人中奖平均分配，余数按最早下注顺序分配；无人中奖的份额不发放；全部走龙门币整数运算，无浮点误差。
+- 权限与配置：仅管理员可创建/关闭；每房间同一时间仅一个进行中实例；竞猜开始/结束时间可配置且间隔 >= 60 秒；场次类型三种（一次性/限定场次数量/无限循环）；参赛对象不单独建表，直接引用 spine_asset（敌人/Boss，type 2/3），支持手动选择 5 名或随机 5 名；每轮名单以 lineup_json（spine_asset.id 数组）落库，待机/移动动画与显示缩放均从明日方舟小人配置读取。
+- 下注：仅房间内成员、仅龙门币；单用户单场总额 100~3000，可为不同参赛者分别下注；普通敌人可重复下注，Boss 不可重复下注；比赛开始前 30 秒自动关闭下注通道；总奖池与各参赛对象彩池实时汇总并全房间广播。
+- 名次与动画：普通竞猜名次由服务端 `SecureRandom` 独立生成，演示场可由管理员指定；均以 AES-256-GCM 密文落库并附 SHA-256 承诺。下注关闭后下发 8 位 hex 动画种子与开赛时间戳，前端用与后端逐位一致的确定性模拟器（mulberry32 + 拒绝采样，见 `RaceSimulator.java` / 前端 `utils/raceSim.ts`）重建 60 秒动画；正常播放的冲线顺序与存储名次一致，提前结算时直接进入领奖台。
+- 结算：位置彩池、无抽水——前三名均视为中奖，奖池 P 按名次均分三份（除不尽的余数给第一名）；同马匹注单按赔率比例派奖：`payout = floor(下注额 × 份额 / 该马匹彩池)`，余数 +1 依次给最早的注单，全场派奖总和恒等于奖池 P；某名次无人押中时其份额按押中马匹彩池加权分摊（最大余数法，并列按名次先后）；前三名全部无人押中且 P>0 时全额退款（注单 REFUNDED + RACE_REFUND 退款流水）；第 4/5 名不中奖，其注金留在奖池内参与派发；分配算法见 `RacePlacePool`（结算与双向校验共用同一实现），全部走龙门币整数运算，无浮点误差。
 - 赛后：不自动退出场景，广播名次生成领奖台（1/2/3 站位）持续 1 分钟，支持主动提前退出；系统通知每个参与者本人结果与奖金金额，奖金自动入账。
-- 双向校验：结算台账（horse_race_settlement）与龙门币流水（RACE_BET/RACE_PAYOUT/RACE_REFUND）逐轮对账，管理端可手动触发、结算时自动执行。
+- 双向校验：结算台账（horse_race_settlement）与龙门币流水（RACE_BET/RACE_PAYOUT/RACE_REFUND）逐轮对账，并按位置彩池规则对已结算、未退款轮次重算逐注派奖比对（历史 60/30/10 轮次与退款轮次自动跳过），管理端可手动触发、结算时自动执行。
 
 ### 14.2 配置
 
@@ -748,8 +759,8 @@ app:
 
 ### 14.3 用户端接口（/user/online/race，需登录）
 
-- `GET /user/online/race/state?roomId=`：查询房间当前赛马状态（模式/轮次/参赛名单/本人下注/总额区间/服务器时间戳）
-- `POST /user/online/race/bet`：下注（body: roomId / participantId / amount；Redis 限流 12 次/分钟；校验在房内、阶段 BETTING、总额区间、Boss 去重）
+- `GET /user/online/race/state?roomId=`：查询房间当前赛马状态（模式/轮次/参赛名单/各参赛对象彩池 horsePools/本人下注/总额区间/服务器时间戳）
+- `POST /user/online/race/bet`：下注（body: roomId / assetId / amount；assetId 为 spine_asset.id；Redis 限流 12 次/分钟；校验在房内、阶段 BETTING、总额区间、Boss 去重）
 
 ### 14.4 管理端接口（/admin/online/race，仅 ADMIN/SUPER_ADMIN）
 
@@ -757,20 +768,37 @@ app:
 - `GET /admin/online/race/list`：进行中模式概览（含当前轮次与参赛数）
 - `POST /admin/online/race/create`：创建（房间/名称/场次类型/场次数/参赛模式/5 名对象/起止时间毫秒时间戳；`sessionType=3` 无限循环时无需指定起止时间，创建后立即开始，单轮竞猜周期默认 120 秒）
 - `POST /admin/online/race/{id}/close`：关闭模式（未结算下注自动退款）
-- `GET /admin/online/race/{id}`：模式详情（参赛名单 + 全部轮次）
+- `GET /admin/online/race/{id}`：模式详情（当前参赛名单 + 全部轮次 + `roundParticipants` 按轮次ID索引的历史名单）；管理端可展开轮次查看当时的参赛对象及最终名次。
 - `POST /admin/online/race/round/{roundId}/verify`：触发单轮双向台账校验
 
 ### 14.5 WebSocket 广播（房间内）
 
 - `race_update`：模式/轮次状态变化，前端收到后重新拉取状态
-- `race_pool_update`：奖池实时汇总（roundId / totalPool）
-- `race_start`：开赛（roundId / roundNo / seed / raceStartAt / durationMs）
-- `race_result`：结算结果（roundId / roundNo / ranking 参赛对象ID数组 / totalPool / paidTotal）
-- `race_my_result`：定向推送本人结果（roundId / roundNo / payout / betTotal / wins）
+- `race_pool_update`：奖池实时汇总（roundId / totalPool / horsePools 各参赛对象彩池）
+- `race_start`：开赛（roundId / roundNo / seed / raceStartAt / podiumEndAt / developerControlled / durationMs）
+- `race_result`：结算结果（roundId / roundNo / ranking 参赛对象ID数组 / totalPool / paidTotal / podiumEndAt / refunded 是否全额退款 / horsePools 各参赛对象最终彩池）
+- `race_my_result`：定向推送本人结果（roundId / roundNo / payout / betTotal / wins / refunded）
 
 ### 14.6 安全机制
 
 - 鉴权：`/user/online/race/**` 仅限登录用户本人操作；`/admin/online/race/**` 走全局 `AuthWebFilter` 仅限 ADMIN/SUPER_ADMIN；下注必须为房间在线成员（服务端按 WS 连接校验）。
 - 频率限制：下注接口 Redis 滑动窗口限流（单用户 12 次/分钟）。
-- 公平性：名次结果密文 + SHA-256 承诺双保险，赛后可用 `seed / result_cipher / result_commit` 核验未被篡改；动画种子与名次一一对应（拒绝采样保证），前端无法从种子反推名次（名次信息仅密文落库）。
-- 一致性：下注（扣款+注单+奖池）与结算（解密+分成+入账+台账+状态）均在 SqlSession 手动事务内提交，轮次行 `SELECT ... FOR UPDATE` 串行化，任一失败整体回滚。
+- 名次保护：名次密文 + SHA-256 承诺在结算前校验，失败拒绝入账；种子可以重建排名，因此仅在下注关闭后下发。指定排名仅允许无人下注的 BETTING 场，设定后服务端禁止下注，并在观赛页面公开标记演示场。
+- 密钥容错：展示与开发者控制台读取历史密文解密失败时（如早期用回退密钥加密、后来才写入 `app.race.secret` 的轮次）降级处理——隐藏该轮名次/已存名次并记录 WARN 日志，不返回 500；结算路径不受影响，解密或承诺校验失败仍拒绝入账。
+- 一致性：下注（扣款+注单+奖池）、结算（解密+位置彩池派奖+入账+台账+状态）与控制操作均先建立显式 Spring JDBC 事务，再打开 SqlSession，按模式行、轮次行顺序加锁；控制操作绑定 roundId，提前结束还校验 expectedStatus，异常或未提交即回滚，广播在数据库提交后发送。
+
+### 14.7 开发者控制台
+
+- 入口：赛马前端场景顶部显示“开发者控制台”按钮，赛马管理列表也保留入口；仅超级管理员 SUPER_ADMIN 可见和使用，普通管理员与用户不显示。控制台全部读取与写入接口均由后端再次校验 SUPER_ADMIN；普通赛马管理权限不变。所有写操作二次确认并记录管理员、场次与操作时间。
+- 安装：已有赛马表的数据库需停服后手动执行一次 `server/src/main/resources/sql/incremental/2026-09-21_horse_race_developer_console.sql`，再启动新版后端；不要执行含 DROP TABLE 的全量建表脚本。
+- 2026-09-22 升级（参赛者表下线）：在已执行过上述脚本的库上，停服后按顺序执行 `server/src/main/resources/sql/incremental/2026-09-22_race_drop_participant.sql`（轮次新增 lineup_json/next_lineup_json 并回填、下注与结算 participant_id 改为 asset_id、删除 horse_race_participant 表），再启动新版后端。若该脚本已执行到第 1 步（horse_race_round 已存在 lineup_json）而中断，改执行断点续跑版 `2026-09-22_race_drop_participant_continue.sql`（其余步骤相同，并重建 settlement 唯一键为 asset_id 版）。
+- 旧限定场次升级：末轮已有下注或已开赛时，增量脚本仅将其之前无下注、无结果的空占位轮标记结束，保留正在进行的末轮及原下注、名次和结算；全部尚未使用时从第一轮依次进行。历史对象ID不变。
+- `GET /admin/online/race/{id}/developer`：返回模式、当前轮次、本场/下一场名单、演示场已保存名次和是否可安排下一场；普通竞猜不提前返回明文名次。
+- `POST /admin/online/race/{id}/developer/start`：Body `{roundId}`；立即截止竞猜并开赛，或跳过开赛前等待；已有下注保留。
+- `POST /admin/online/race/{id}/developer/ranking`：Body `{roundId, participantIds}`；按第一至第五名传入本场全部5个不重复对象ID，仅无人下注且尚未开赛时允许，成功后为禁止下注的演示场。
+- `POST /admin/online/race/{id}/developer/next-participants`：Body `{roundId, assetIds}`；按道次指定下一场5个不重复敌人/Boss资源ID，空数组清除计划；仅下一场切换，不修改本场及历史，未指定时按模式规则自动确定（无限循环随机模式重新随机 5 名，其余沿用本场名单），最后一场不可设置。
+- `POST /admin/online/race/{id}/developer/end`：Body `{roundId, expectedStatus}`；`RACING` 按已确定排名立即结算，`PODIUM` 跳过领奖台并按场次规则继续或结束；取消竞猜仍使用关闭模式退款接口。
+- 角色状态预览：控制台内嵌预览面板与明日方舟小人管理页一致（时装组/动画/设为待机动画/设为移动动画/显示缩放），且可直接修改——动画与缩放保存到 spine_asset 配置（复用 `POST /admin/spine/{id}/update` 部分更新接口，未传字段保持原值），赛道与前端场景下次加载即生效。
+- spine 更新 415 修复（2026-09-22）：`POST /admin/spine/{id}/update`（及 import/import-zip）的 displayScale 原以 `@RequestPart Double` 绑定，客户端以非 text/plain 内容类型（如 application/octet-stream）发送该字段时 Spring 找不到解码器直接 415；现改为绑定原始 Part 按 UTF-8 读取后解析（空值保持原值、非法值返回参数错误），任意内容类型均可正常更新。
+- 待机/移动动画写入（2026-09-22）：部分敌人 skel 无名为 `Idle`/`Move` 的动画（如 enemy_10001_trslim 为 `Idle_A`/`Move_A`），赛道场景已按 skel 实际动画名智能匹配（支持 `Idle_A`、`Move_Loop` 等后缀，配置缺失或名称不符时退回首个可用动画，加载不再报 "Animation not found"）；已导入资源可在 Navicat 执行 `2026-09-22_spine_race_anim_config.sql` 写入 5 个敌人/Boss 的待机与移动动画，或直接在控制台预览面板用“设为待机动画/设为移动动画”逐个设置。比赛期间 RACING 使用 `move_animation`、BETTING/PODIUM 使用 `idle_animation`，场景每次状态刷新都从接口同步全部参赛者配置（后台修改后即时生效，不再因轮次切换丢失配置退回默认匹配）。
+- 写接口响应使用统一 `{code, message, data}` 格式，成功时 `code=0`、`data=true`；自动流转和手动操作共用结算、退款及台账机制，不直接修改钱包余额。

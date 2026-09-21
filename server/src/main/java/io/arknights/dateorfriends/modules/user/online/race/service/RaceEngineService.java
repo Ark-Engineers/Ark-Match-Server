@@ -10,8 +10,6 @@ import io.arknights.dateorfriends.modules.user.online.race.mapper.RaceBetDO;
 import io.arknights.dateorfriends.modules.user.online.race.mapper.RaceBetMapper;
 import io.arknights.dateorfriends.modules.user.online.race.mapper.RaceDO;
 import io.arknights.dateorfriends.modules.user.online.race.mapper.RaceMapper;
-import io.arknights.dateorfriends.modules.user.online.race.mapper.RaceParticipantDO;
-import io.arknights.dateorfriends.modules.user.online.race.mapper.RaceParticipantMapper;
 import io.arknights.dateorfriends.modules.user.online.race.mapper.RaceRoundDO;
 import io.arknights.dateorfriends.modules.user.online.race.mapper.RaceRoundMapper;
 import io.arknights.dateorfriends.modules.user.online.race.mapper.RaceSettlementDO;
@@ -23,6 +21,7 @@ import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -34,16 +33,22 @@ import org.apache.ibatis.session.SqlSessionFactory;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
-import tools.jackson.databind.JsonNode;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.TransactionDefinition;
+import org.springframework.transaction.TransactionStatus;
+import org.springframework.transaction.support.DefaultTransactionDefinition;
 import tools.jackson.databind.ObjectMapper;
 
 /**
  * 赛马竞猜核心引擎：
+ * - 参赛者不建表：直接从 spine_asset（明日方舟小人，type 2/3）抓取，
+ *   待机/移动动画与显示缩放均沿用 spine_asset 配置；每轮阵容以 lineup_json 存 asset id 列表
  * - 模式实例创建/关闭（仅管理员；每房间一个 ACTIVE 实例）
  * - 下注（龙门币唯一结算货币；单用户单场 100-3000；Boss 不可重复下注；赛前 30 秒自动关闭）
  * - 轮次状态机 BETTING -> RACING -> PODIUM -> FINISHED ->（下一轮 / 关闭）
  * - 名次后端独立生成、AES-GCM 加密落库、确定性种子保证前端动画 100% 一致
- * - 结算：第一名 60%、第二名 30%、第三名 10%；同对象多人中奖平均分配；无人中奖份额不发放
+ * - 结算：位置彩池（无抽水）——前三名均中奖，奖池按名次均分三份，同马匹注单按赔率比例派奖；
+ *   前三名全部无人押中时全额退款；分配算法见 RacePlacePool（与双向校验共用）
  * - 双向台账校验（结算表 vs 龙门币流水）与系统通知
  */
 @Service
@@ -70,8 +75,8 @@ public class RaceEngineService {
     private static volatile long lastTickErrorLogAt;
 
     private final SqlSessionFactory sqlSessionFactory;
+    private final PlatformTransactionManager transactionManager;
     private final RaceMapper raceMapper;
-    private final RaceParticipantMapper participantMapper;
     private final RaceRoundMapper roundMapper;
     private final RaceBetMapper betMapper;
     private final RaceSettlementMapper settlementMapper;
@@ -87,8 +92,8 @@ public class RaceEngineService {
 
     public RaceEngineService(
             SqlSessionFactory sqlSessionFactory,
+            PlatformTransactionManager transactionManager,
             RaceMapper raceMapper,
-            RaceParticipantMapper participantMapper,
             RaceRoundMapper roundMapper,
             RaceBetMapper betMapper,
             RaceSettlementMapper settlementMapper,
@@ -103,8 +108,8 @@ public class RaceEngineService {
             ObjectMapper objectMapper
     ) {
         this.sqlSessionFactory = sqlSessionFactory;
+        this.transactionManager = transactionManager;
         this.raceMapper = raceMapper;
-        this.participantMapper = participantMapper;
         this.roundMapper = roundMapper;
         this.betMapper = betMapper;
         this.settlementMapper = settlementMapper;
@@ -117,6 +122,21 @@ public class RaceEngineService {
         this.raceVerifyService = raceVerifyService;
         this.onlineWs = onlineWs;
         this.objectMapper = objectMapper;
+    }
+
+    // SpringManagedTransaction 不会通过 openSession(false) 关闭自动提交，必须先绑定 Spring 事务。
+    private final class RaceTransaction implements AutoCloseable {
+        private final TransactionStatus status = transactionManager.getTransaction(
+                new DefaultTransactionDefinition(TransactionDefinition.PROPAGATION_REQUIRES_NEW));
+
+        void commit() {
+            transactionManager.commit(status);
+        }
+
+        @Override
+        public void close() {
+            if (!status.isCompleted()) transactionManager.rollback(status);
+        }
     }
 
     // ---------- DTO ----------
@@ -145,7 +165,7 @@ public class RaceEngineService {
     ) {
     }
 
-    public record ParticipantInfo(long id, int sortNo, String assetKey, String name, int type) {
+    public record ParticipantInfo(long id, int sortNo, String assetKey, String name, int type, String idleAnimation, String moveAnimation, Double displayScale) {
     }
 
     public record RoundInfo(
@@ -160,11 +180,12 @@ public class RaceEngineService {
             long totalPool,
             int betCount,
             long paidTotal,
-            List<Long> ranking
+            List<Long> ranking,
+            boolean developerControlled
     ) {
     }
 
-    public record MyBetInfo(long participantId, long amount) {
+    public record MyBetInfo(long assetId, long amount) {
     }
 
     public record StateResponse(
@@ -176,17 +197,27 @@ public class RaceEngineService {
             long myTotal,
             long minTotalBet,
             long maxTotalBet,
+            Map<Long, Long> horsePools,
             long serverTs
     ) {
         public static StateResponse missing() {
-            return new StateResponse(false, null, null, List.of(), List.of(), 0, MIN_TOTAL_BET, MAX_TOTAL_BET, System.currentTimeMillis());
+            return new StateResponse(false, null, null, List.of(), List.of(), 0, MIN_TOTAL_BET, MAX_TOTAL_BET, Map.of(), System.currentTimeMillis());
         }
     }
 
     public record BetResult(long betId, long myTotal, long totalPool) {
     }
 
-    public record AdminDetail(RaceBrief race, List<ParticipantInfo> participants, List<RoundInfo> rounds) {
+    public record AdminDetail(
+            RaceBrief race, List<ParticipantInfo> participants, List<RoundInfo> rounds,
+            Map<Long, List<ParticipantInfo>> roundParticipants
+    ) {
+    }
+
+    public record DeveloperState(
+            RaceBrief race, RoundInfo round, List<ParticipantInfo> participants,
+            List<ParticipantInfo> nextParticipants, List<Long> plannedRanking, boolean canScheduleNext
+    ) {
     }
 
     public record RaceAdminRow(RaceBrief race, RoundInfo round, int participantCount) {
@@ -207,6 +238,76 @@ public class RaceEngineService {
 
     static LocalDateTime fromMs(long ms) {
         return LocalDateTime.ofInstant(Instant.ofEpochMilli(ms), ZONE);
+    }
+
+    // ---------- 阵容（lineup_json）工具 ----------
+
+    private String lineupJsonOf(List<Long> ids) {
+        return objectMapper.writeValueAsString(ids);
+    }
+
+    private List<Long> lineupIds(String json) {
+        if (json == null || json.isBlank()) return List.of();
+        try {
+            return Arrays.asList(objectMapper.readValue(json, Long[].class));
+        } catch (Exception e) {
+            log.warn("race lineup json parse failed: {}", json, e);
+            return List.of();
+        }
+    }
+
+    /** 按 lineup_json 中的 id 顺序抓取 spine_asset；已删除/缺失的资产跳过（顺序即 sortNo） */
+    private List<SpineAssetDO> lineupAssets(SpineAssetMapper mapper, String lineupJson) {
+        var ids = lineupIds(lineupJson);
+        if (ids.isEmpty()) return List.of();
+        var byId = new java.util.HashMap<Long, SpineAssetDO>();
+        for (var a : mapper.selectByIds(ids)) {
+            if (a.getId() != null) byId.put(a.getId(), a);
+        }
+        var result = new ArrayList<SpineAssetDO>(ids.size());
+        for (var id : ids) {
+            var asset = byId.get(id);
+            if (asset != null) result.add(asset);
+        }
+        return result;
+    }
+
+    private List<SpineAssetDO> lineupAssets(SqlSession session, String lineupJson) {
+        return lineupAssets(session.getMapper(SpineAssetMapper.class), lineupJson);
+    }
+
+    /** 无限循环随机模式下一场重新随机 5 名敌人/Boss；池不足 5 时返回 null（调用方沿用本场名单） */
+    private String randomLineupJson(SqlSession session) {
+        var pool = session.getMapper(SpineAssetMapper.class).listByTypes(List.of(2, 3), 500);
+        if (pool.size() < RACER_COUNT) return null;
+        Collections.shuffle(pool, new java.security.SecureRandom());
+        return lineupJsonOf(pool.subList(0, RACER_COUNT).stream().map(a -> a.getId() == null ? 0L : a.getId()).toList());
+    }
+
+    private List<ParticipantInfo> toParticipantInfos(List<SpineAssetDO> assets) {
+        var result = new ArrayList<ParticipantInfo>(assets.size());
+        for (int i = 0; i < assets.size(); i++) {
+            result.add(toParticipantInfo(assets.get(i), i + 1));
+        }
+        return result;
+    }
+
+    private ParticipantInfo toParticipantInfo(SpineAssetDO a, int sortNo) {
+        String idle = a.getIdleAnimation();
+        if (idle == null || idle.isBlank()) idle = "Idle";
+        String move = a.getMoveAnimation();
+        if (move == null || move.isBlank()) move = "Move";
+        double scale = a.getDisplayScale() == null || a.getDisplayScale() <= 0 ? 1.0 : a.getDisplayScale();
+        return new ParticipantInfo(
+                a.getId() == null ? 0 : a.getId(),
+                sortNo,
+                a.getAssetKey(),
+                a.getName(),
+                a.getType() == null ? 2 : a.getType(),
+                idle,
+                move,
+                scale
+        );
     }
 
     // ---------- 管理员：创建 / 关闭 / 详情 / 目录 ----------
@@ -255,9 +356,11 @@ public class RaceEngineService {
             }
         }
 
+        // 参赛者直接抓取 spine_asset（type 2/3），不落参赛者表
         List<SpineAssetDO> chosen = resolveParticipants(req);
 
-        try (var session = sqlSessionFactory.openSession(false)) {
+        try (var transaction = new RaceTransaction();
+             var session = sqlSessionFactory.openSession(false)) {
             var race = new RaceDO();
             race.setRoomId(roomId);
             race.setName(req.name() == null || req.name().isBlank() ? null : req.name().trim());
@@ -269,84 +372,59 @@ public class RaceEngineService {
             race.setCreatedBy(adminId);
             session.getMapper(RaceMapper.class).insert(race);
 
-            var participants = new ArrayList<RaceParticipantDO>();
-            for (int i = 0; i < chosen.size(); i++) {
-                var a = chosen.get(i);
-                var p = new RaceParticipantDO();
-                p.setRaceId(race.getId());
-                p.setSortNo(i + 1);
-                p.setSpineAssetId(a.getId());
-                p.setAssetKey(a.getAssetKey());
-                p.setName(a.getName());
-                p.setType(a.getType() == null ? 2 : a.getType());
-                participants.add(p);
-            }
-            session.getMapper(RaceParticipantMapper.class).insertBatch(participants);
-
-            var rounds = buildRoundTimes(betStart, betDurationSeconds, totalRounds);
-            var roundMapperTx = session.getMapper(RaceRoundMapper.class);
-            for (int i = 0; i < rounds.size(); i++) {
-                var r = new RaceRoundDO();
-                r.setRaceId(race.getId());
-                r.setRoundNo(i + 1);
-                r.setStatus("BETTING");
-                r.setBetStartAt(rounds.get(i)[0]);
-                r.setBetEndAt(rounds.get(i)[1]);
-                r.setRaceStartAt(rounds.get(i)[1].plusSeconds(PRE_RACE_SECONDS));
-                r.setPodiumEndAt(rounds.get(i)[1].plusSeconds(PRE_RACE_SECONDS + RACE_DURATION_SECONDS + PODIUM_DURATION_SECONDS));
-                r.setTotalPool(0L);
-                r.setBetCount(0);
-                r.setPaidTotal(0L);
-                roundMapperTx.insert(r);
-            }
+            var r = new RaceRoundDO();
+            r.setRaceId(race.getId());
+            r.setRoundNo(1);
+            r.setLineupJson(lineupJsonOf(chosen.stream().map(a -> a.getId() == null ? 0L : a.getId()).toList()));
+            r.setStatus("BETTING");
+            r.setBetStartAt(betStart);
+            r.setBetEndAt(betStart.plusSeconds(betDurationSeconds));
+            r.setRaceStartAt(r.getBetEndAt().plusSeconds(PRE_RACE_SECONDS));
+            r.setPodiumEndAt(r.getRaceStartAt().plusSeconds(RACE_DURATION_SECONDS + PODIUM_DURATION_SECONDS));
+            session.getMapper(RaceRoundMapper.class).insert(r);
             session.commit();
+            transaction.commit();
             broadcastRaceUpdate(roomId);
             return race.getId();
         }
     }
 
     private List<SpineAssetDO> resolveParticipants(CreateRequest req) {
-        if (req.participantMode() == 1) {
-            var ids = req.participantAssetIds();
-            if (ids == null || ids.size() != RACER_COUNT) {
-                throw new BusinessException(ErrorCode.RACE_PARTICIPANT_COUNT);
-            }
-            var distinct = ids.stream().distinct().count();
-            if (distinct != RACER_COUNT) throw new BusinessException(ErrorCode.RACE_PARTICIPANT_COUNT);
-            var result = new ArrayList<SpineAssetDO>();
-            for (var id : ids) {
-                var asset = spineAssetMapper.selectById(id);
-                if (asset == null || asset.getType() == null || (asset.getType() != 2 && asset.getType() != 3)) {
-                    throw new BusinessException(ErrorCode.RACE_ASSET_TYPE_INVALID);
-                }
-                result.add(asset);
-            }
-            return result;
-        }
+        if (req.participantMode() == 1) return resolveAssets(req.participantAssetIds());
         var pool = spineAssetMapper.listByTypes(List.of(2, 3), 500);
         if (pool.size() < RACER_COUNT) throw new BusinessException(ErrorCode.RACE_ASSET_NOT_ENOUGH);
         Collections.shuffle(pool, new java.security.SecureRandom());
         return new ArrayList<>(pool.subList(0, RACER_COUNT));
     }
 
-    private List<LocalDateTime[]> buildRoundTimes(LocalDateTime firstBetStart, long betDurationSeconds, int totalRounds) {
-        var count = totalRounds <= 0 ? 1 : totalRounds;
-        var rounds = new ArrayList<LocalDateTime[]>(count);
-        var betStart = firstBetStart;
-        for (int i = 0; i < count; i++) {
-            var betEnd = betStart.plusSeconds(betDurationSeconds);
-            rounds.add(new LocalDateTime[]{betStart, betEnd});
-            betStart = betEnd.plusSeconds(PRE_RACE_SECONDS + RACE_DURATION_SECONDS + PODIUM_DURATION_SECONDS);
+    private List<SpineAssetDO> resolveAssets(List<Long> ids) {
+        if (ids == null || ids.size() != RACER_COUNT || ids.stream().distinct().count() != RACER_COUNT) {
+            throw new BusinessException(ErrorCode.RACE_PARTICIPANT_COUNT);
         }
-        return rounds;
+        for (var id : ids) {
+            if (id == null || id <= 0) throw new BusinessException(ErrorCode.RACE_ASSET_TYPE_INVALID);
+        }
+        var assets = spineAssetMapper.selectByIds(ids);
+        var byId = new java.util.HashMap<Long, SpineAssetDO>();
+        for (var a : assets) {
+            byId.put(a.getId(), a);
+        }
+        var result = new ArrayList<SpineAssetDO>();
+        for (var id : ids) {
+            var asset = byId.get(id);
+            if (asset == null || asset.getType() == null || (asset.getType() != 2 && asset.getType() != 3)) {
+                throw new BusinessException(ErrorCode.RACE_ASSET_TYPE_INVALID);
+            }
+            result.add(asset);
+        }
+        return result;
     }
 
     public void closeRace(long adminId, long raceId) {
-        var race = raceMapper.selectById(raceId);
-        if (race == null || !"ACTIVE".equals(race.getStatus())) {
-            throw new BusinessException(ErrorCode.RACE_NOT_FOUND);
-        }
-        try (var session = sqlSessionFactory.openSession(false)) {
+        final RaceDO race;
+        try (var transaction = new RaceTransaction();
+             var session = sqlSessionFactory.openSession(false)) {
+            race = requireActiveRace(session, raceId);
             var rm = session.getMapper(RaceRoundMapper.class);
             var bm = session.getMapper(RaceBetMapper.class);
             var current = rm.selectCurrentByRaceId(raceId);
@@ -361,26 +439,34 @@ public class RaceEngineService {
                 );
                 bm.updateStatusAndPayout(bet.getId(), "REFUNDED", null);
             }
-            if (current != null) {
-                rm.forceFinish(current.getId());
-            }
+            for (var r : rm.selectByRaceId(raceId)) rm.forceFinish(r.getId());
             session.getMapper(RaceMapper.class).updateStatus(raceId, "CLOSED");
+            if (current != null) recordControl(session, raceId, current.getId(), adminId, "CLOSE_REFUND", Map.of());
             session.commit();
+            transaction.commit();
         }
         broadcastRaceUpdate(race.getRoomId());
     }
 
     public AdminDetail detail(long raceId) {
-        var race = raceMapper.selectById(raceId);
-        if (race == null) throw new BusinessException(ErrorCode.RACE_NOT_FOUND);
-        var participants = participantMapper.selectByRaceId(raceId);
-        var rounds = roundMapper.selectByRaceId(raceId);
-        var brief = toBrief(race);
-        return new AdminDetail(
-                brief,
-                participants.stream().map(this::toParticipantInfo).toList(),
-                rounds.stream().map(this::toRoundInfo).toList()
-        );
+        try (var transaction = new RaceTransaction();
+             var session = sqlSessionFactory.openSession(false)) {
+            var race = session.getMapper(RaceMapper.class).selectByIdForUpdate(raceId);
+            if (race == null) throw new BusinessException(ErrorCode.RACE_NOT_FOUND);
+            var rm = session.getMapper(RaceRoundMapper.class);
+            var current = rm.selectCurrentByRaceId(raceId);
+            var rounds = rm.selectByRaceId(raceId);
+            var roundParticipants = new LinkedHashMap<Long, List<ParticipantInfo>>();
+            for (var round : rounds) {
+                roundParticipants.put(round.getId(), toParticipantInfos(lineupAssets(session, round.getLineupJson())));
+            }
+            return new AdminDetail(
+                    toBrief(race),
+                    current == null ? List.<ParticipantInfo>of() : toParticipantInfos(lineupAssets(session, current.getLineupJson())),
+                    rounds.stream().map(this::toRoundInfo).toList(),
+                    roundParticipants
+            );
+        }
     }
 
     public List<AssetOption> catalog() {
@@ -396,11 +482,162 @@ public class RaceEngineService {
 
     /** 管理端：所有进行中模式的当前轮次概览 */
     public List<RaceAdminRow> listActiveRows() {
-        return raceMapper.selectActive().stream().map(race -> {
-            var round = roundMapper.selectCurrentByRaceId(race.getId());
-            int count = participantMapper.selectByRaceId(race.getId()).size();
+        var actives = raceMapper.selectActive();
+        if (actives.isEmpty()) return List.of();
+
+        var raceIds = actives.stream().map(RaceDO::getId).toList();
+        var roundsByRaceId = new java.util.HashMap<Long, RaceRoundDO>();
+        var rounds = roundMapper.selectCurrentByRaceIds(raceIds);
+        for (var r : rounds) {
+            roundsByRaceId.put(r.getRaceId(), r);
+        }
+
+        var countsByRaceId = new java.util.HashMap<Long, Integer>();
+        for (var race : actives) {
+            var round = roundsByRaceId.get(race.getId());
+            if (round != null) {
+                countsByRaceId.put(race.getId(), lineupAssets(spineAssetMapper, round.getLineupJson()).size());
+            }
+        }
+
+        return actives.stream().map(race -> {
+            var round = roundsByRaceId.get(race.getId());
+            int count = countsByRaceId.getOrDefault(race.getId(), 0);
             return new RaceAdminRow(toBrief(race), round == null ? null : toRoundInfo(round), count);
         }).toList();
+    }
+
+    public DeveloperState developerState(long raceId) {
+        try (var transaction = new RaceTransaction();
+             var session = sqlSessionFactory.openSession(false)) {
+            var race = session.getMapper(RaceMapper.class).selectByIdForUpdate(raceId);
+            if (race == null) throw new BusinessException(ErrorCode.RACE_NOT_FOUND);
+            var round = session.getMapper(RaceRoundMapper.class).selectCurrentByRaceId(raceId);
+            var participants = round == null ? List.<SpineAssetDO>of() : lineupAssets(session, round.getLineupJson());
+            var next = round == null ? List.<SpineAssetDO>of() : lineupAssets(session, round.getNextLineupJson());
+            List<Long> planned = null;
+            if (round != null && Boolean.TRUE.equals(round.getDeveloperControlled()) && round.getResultCipher() != null) {
+                try {
+                    planned = RacePlacePool.parseRanking(crypto.decrypt(round.getResultCipher()), round.getId());
+                } catch (Exception e) {
+                    log.warn("developer state: planned ranking unavailable (cipher undecryptable or corrupt) round={}", round.getId(), e);
+                }
+            }
+            return new DeveloperState(toBrief(race), round == null ? null : toRoundInfo(round),
+                    toParticipantInfos(participants),
+                    toParticipantInfos(next), planned,
+                    "ACTIVE".equals(race.getStatus()) && round != null && hasNextRound(race, round));
+        }
+    }
+
+    public void setRanking(long adminId, long raceId, long roundId, List<Long> ranking) {
+        final RaceDO race;
+        try (var transaction = new RaceTransaction();
+             var session = sqlSessionFactory.openSession(false)) {
+            race = requireActiveRace(session, raceId);
+            var round = requireCurrentRound(session, raceId, roundId);
+            if (!"BETTING".equals(round.getStatus()) || round.getBetCount() != 0) {
+                throw new BusinessException(ErrorCode.RACE_PHASE_INVALID, "仅可为尚未开赛且无人下注的场次设置排名");
+            }
+            var participants = lineupAssets(session, round.getLineupJson());
+            var result = prepareResult(roundId, participants, ranking);
+            if (session.getMapper(RaceRoundMapper.class).setPlannedRanking(roundId, result.seed(), result.cipher(), result.commit()) != 1) {
+                throw new BusinessException(ErrorCode.RACE_PHASE_INVALID);
+            }
+            recordControl(session, raceId, roundId, adminId, "SET_RANKING", Map.of("resultCommit", result.commit()));
+            session.commit();
+            transaction.commit();
+        }
+        broadcastRaceUpdate(race.getRoomId());
+    }
+
+    public void setNextParticipants(long adminId, long raceId, long roundId, List<Long> assetIds) {
+        if (assetIds == null) throw new BusinessException(ErrorCode.PARAM_INVALID);
+        var chosen = assetIds.isEmpty() ? List.<SpineAssetDO>of() : resolveAssets(assetIds);
+        final RaceDO race;
+        try (var transaction = new RaceTransaction();
+             var session = sqlSessionFactory.openSession(false)) {
+            race = requireActiveRace(session, raceId);
+            var round = requireCurrentRound(session, raceId, roundId);
+            if (!hasNextRound(race, round) || "FINISHED".equals(round.getStatus())) {
+                throw new BusinessException(ErrorCode.RACE_PHASE_INVALID, "该模式没有下一场可配置");
+            }
+            String nextJson = chosen.isEmpty()
+                    ? null
+                    : lineupJsonOf(chosen.stream().map(a -> a.getId() == null ? 0L : a.getId()).toList());
+            if (session.getMapper(RaceRoundMapper.class).updateNextLineupJson(roundId, nextJson) != 1) {
+                throw new BusinessException(ErrorCode.RACE_PHASE_INVALID);
+            }
+            recordControl(session, raceId, roundId, adminId, "NEXT_PARTICIPANTS", Map.of("assetIds", assetIds));
+            session.commit();
+            transaction.commit();
+        }
+        broadcastRaceUpdate(race.getRoomId());
+    }
+
+    public void startNow(long adminId, long raceId, long roundId) {
+        var race = raceMapper.selectById(raceId);
+        var round = roundMapper.selectById(roundId);
+        if (race == null || round == null || !round.getRaceId().equals(raceId)) {
+            throw new BusinessException(ErrorCode.RACE_NOT_FOUND);
+        }
+        startRaceRound(race, round, adminId);
+    }
+
+    public void endNow(long adminId, long raceId, long roundId, String expectedStatus) {
+        var race = raceMapper.selectById(raceId);
+        var round = roundMapper.selectById(roundId);
+        if (race == null || round == null || !round.getRaceId().equals(raceId)) {
+            throw new BusinessException(ErrorCode.RACE_NOT_FOUND);
+        }
+        if (!round.getStatus().equals(expectedStatus)) {
+            throw new BusinessException(ErrorCode.RACE_PHASE_INVALID, "阶段已变化，请刷新后重新确认");
+        }
+        switch (expectedStatus) {
+            case "RACING" -> settleRound(race, round, adminId);
+            case "PODIUM" -> finishRoundAndAdvance(race, round, adminId);
+            default -> throw new BusinessException(ErrorCode.RACE_PHASE_INVALID, "仅可提前结算比赛或结束领奖台；取消竞猜请关闭模式并退款");
+        }
+    }
+
+    private RaceDO requireActiveRace(SqlSession session, long raceId) {
+        var race = session.getMapper(RaceMapper.class).selectByIdForUpdate(raceId);
+        if (race == null || !"ACTIVE".equals(race.getStatus())) throw new BusinessException(ErrorCode.RACE_NOT_FOUND);
+        return race;
+    }
+
+    private RaceRoundDO requireCurrentRound(SqlSession session, long raceId, long roundId) {
+        var rm = session.getMapper(RaceRoundMapper.class);
+        var current = rm.selectCurrentByRaceId(raceId);
+        if (current == null || current.getId() != roundId) {
+            throw new BusinessException(ErrorCode.RACE_PHASE_INVALID, "轮次已变化，请刷新后重试");
+        }
+        return rm.selectByIdForUpdate(roundId);
+    }
+
+    private boolean hasNextRound(RaceDO race, RaceRoundDO round) {
+        return Integer.valueOf(3).equals(race.getSessionType())
+                || (Integer.valueOf(2).equals(race.getSessionType()) && round.getRoundNo() < race.getTotalRounds());
+    }
+
+    private void recordControl(SqlSession session, long raceId, long roundId, long adminId, String action, Map<String, ?> payload) {
+        session.getMapper(RaceMapper.class).insertControlLog(raceId, roundId, adminId, action, objectMapper.writeValueAsString(payload));
+    }
+
+    private record PreparedResult(String seed, String cipher, String commit) {
+    }
+
+    private PreparedResult prepareResult(long roundId, List<SpineAssetDO> participants, List<Long> ranking) {
+        if (participants.size() != RACER_COUNT || ranking == null || ranking.size() != RACER_COUNT
+                || ranking.stream().distinct().count() != RACER_COUNT) {
+            throw new BusinessException(ErrorCode.RACE_PARTICIPANT_COUNT);
+        }
+        var ids = participants.stream().map(a -> a.getId() == null ? 0L : a.getId()).toList();
+        if (!ids.containsAll(ranking)) throw new BusinessException(ErrorCode.RACE_PARTICIPANT_INVALID);
+        int[] indices = ranking.stream().mapToInt(ids::indexOf).toArray();
+        var seed = RaceSimulator.findSeedForRanking(indices);
+        var json = objectMapper.writeValueAsString(Map.of("roundId", roundId, "ranking", ranking));
+        return new PreparedResult(seed, crypto.encrypt(json), crypto.commit(json, seed, roundId));
     }
 
     // ---------- 用户：状态 / 下注 ----------
@@ -408,37 +645,43 @@ public class RaceEngineService {
     public StateResponse getState(long userId, String roomId) {
         var race = raceMapper.selectByRoomIdAndStatus(safeRoomId(roomId), "ACTIVE");
         if (race == null) return StateResponse.missing();
-        var participants = participantMapper.selectByRaceId(race.getId());
         var round = roundMapper.selectCurrentByRaceId(race.getId());
+        var participants = round == null ? List.<SpineAssetDO>of() : lineupAssets(spineAssetMapper, round.getLineupJson());
         RoundInfo roundInfo = null;
         List<MyBetInfo> myBets = List.of();
         long myTotal = 0;
+        Map<Long, Long> horsePools = Map.of();
         if (round != null) {
             roundInfo = toRoundInfo(round);
             var bets = betMapper.selectByRoundAndUser(round.getId(), userId);
-            var byParticipant = new LinkedHashMap<Long, Long>();
+            var byAsset = new LinkedHashMap<Long, Long>();
             for (var b : bets) {
-                byParticipant.merge(b.getParticipantId(), b.getAmount() == null ? 0 : b.getAmount(), Long::sum);
+                byAsset.merge(b.getAssetId() == null ? 0L : b.getAssetId(), b.getAmount() == null ? 0 : b.getAmount(), Long::sum);
             }
-            myBets = byParticipant.entrySet().stream()
+            myBets = byAsset.entrySet().stream()
                     .map(e -> new MyBetInfo(e.getKey(), e.getValue()))
                     .toList();
-            myTotal = byParticipant.values().stream().mapToLong(Long::longValue).sum();
+            myTotal = byAsset.values().stream().mapToLong(Long::longValue).sum();
+            horsePools = new LinkedHashMap<Long, Long>();
+            for (var p : participants) {
+                horsePools.put(p.getId(), betMapper.sumPoolByRoundAndAsset(round.getId(), p.getId()));
+            }
         }
         return new StateResponse(
                 true,
                 toBrief(race),
                 roundInfo,
-                participants.stream().map(this::toParticipantInfo).toList(),
+                toParticipantInfos(participants),
                 myBets,
                 myTotal,
                 MIN_TOTAL_BET,
                 MAX_TOTAL_BET,
+                horsePools,
                 System.currentTimeMillis()
         );
     }
 
-    public BetResult placeBet(long userId, String roomId, long participantId, long amount, String ip) {
+    public BetResult placeBet(long userId, String roomId, long assetId, long amount, String ip) {
         if (amount < 1) throw new BusinessException(ErrorCode.RACE_AMOUNT_INVALID);
         if (!onlineWs.isUserInRoom(roomId, userId)) {
             throw new BusinessException(ErrorCode.RACE_NOT_IN_ROOM);
@@ -449,18 +692,25 @@ public class RaceEngineService {
         if (round == null || !"BETTING".equals(round.getStatus())) {
             throw new BusinessException(ErrorCode.RACE_PHASE_INVALID);
         }
-        var participant = participantMapper.selectById(participantId);
-        if (participant == null || !participant.getRaceId().equals(race.getId())) {
+        var asset = spineAssetMapper.selectById(assetId);
+        if (asset == null || asset.getType() == null || (asset.getType() != 2 && asset.getType() != 3)) {
             throw new BusinessException(ErrorCode.RACE_PARTICIPANT_INVALID);
         }
-        var assetType = participant.getType() == null ? 2 : participant.getType();
+        var assetType = asset.getType();
 
-        try (var session = sqlSessionFactory.openSession(false)) {
+        try (var transaction = new RaceTransaction();
+             var session = sqlSessionFactory.openSession(false)) {
+            requireActiveRace(session, race.getId());
             var rm = session.getMapper(RaceRoundMapper.class);
             var bm = session.getMapper(RaceBetMapper.class);
-            var locked = rm.selectByIdForUpdate(round.getId());
-            if (locked == null || !"BETTING".equals(locked.getStatus())) {
-                throw new BusinessException(ErrorCode.RACE_PHASE_INVALID);
+            var locked = requireCurrentRound(session, race.getId(), round.getId());
+            if (!"BETTING".equals(locked.getStatus())) throw new BusinessException(ErrorCode.RACE_PHASE_INVALID);
+            if (Boolean.TRUE.equals(locked.getDeveloperControlled())) {
+                throw new BusinessException(ErrorCode.RACE_PHASE_INVALID, "指定排名的演示场不接受下注");
+            }
+            var lineupIds = lineupIds(locked.getLineupJson());
+            if (!lineupIds.contains(assetId)) {
+                throw new BusinessException(ErrorCode.RACE_PARTICIPANT_INVALID);
             }
             var now = nowLdt();
             if (now.isBefore(locked.getBetStartAt()) || !now.isBefore(locked.getBetEndAt())) {
@@ -471,14 +721,20 @@ public class RaceEngineService {
             if (newTotal < MIN_TOTAL_BET || newTotal > MAX_TOTAL_BET) {
                 throw new BusinessException(ErrorCode.RACE_AMOUNT_OUT_OF_RANGE);
             }
-            if (assetType == 3 && bm.countActiveByRoundUserParticipant(round.getId(), userId, participantId) > 0) {
+            if (assetType == 3 && bm.countActiveByRoundUserAsset(round.getId(), userId, assetId) > 0) {
                 throw new BusinessException(ErrorCode.RACE_BOSS_DUPLICATE);
             }
+            // 先查参赛者彩池（必须在 commit 前，否则 SqlSession 关闭导致 Connection is closed）
+            var horsePools = new LinkedHashMap<Long, Long>();
+            for (var id : lineupIds) {
+                horsePools.put(id, bm.sumPoolByRoundAndAsset(round.getId(), id));
+            }
+
             var bet = new RaceBetDO();
             bet.setRoundId(round.getId());
             bet.setRaceId(race.getId());
             bet.setUserId(userId);
-            bet.setParticipantId(participantId);
+            bet.setAssetId(assetId);
             bet.setAmount(amount);
             bet.setStatus("ACTIVE");
             bm.insert(bet);
@@ -488,10 +744,12 @@ public class RaceEngineService {
                     "赛马竞猜下注", "race-bet-" + round.getId() + "-" + shortUuid(), ip, userId
             );
             session.commit();
+            transaction.commit();
             long poolAfter = (locked.getTotalPool() == null ? 0 : locked.getTotalPool()) + amount;
             broadcastRace(roomId, "race_pool_update", Map.of(
                     "roundId", round.getId(),
-                    "totalPool", poolAfter
+                    "totalPool", poolAfter,
+                    "horsePools", horsePools
             ));
             return new BetResult(bet.getId() == null ? 0 : bet.getId(), newTotal, poolAfter);
         }
@@ -511,20 +769,38 @@ public class RaceEngineService {
             }
             return;
         }
+        if (actives.isEmpty()) return;
+
+        var raceIds = actives.stream().map(RaceDO::getId).toList();
+        var roundsByRaceId = new java.util.HashMap<Long, RaceRoundDO>();
+        try {
+            var rounds = roundMapper.selectCurrentByRaceIds(raceIds);
+            for (var r : rounds) {
+                roundsByRaceId.put(r.getRaceId(), r);
+            }
+        } catch (Exception e) {
+            var now = System.currentTimeMillis();
+            if (now - lastTickErrorLogAt >= TICK_ERROR_LOG_INTERVAL_MS) {
+                lastTickErrorLogAt = now;
+                log.error("race tick: load current rounds failed", e);
+            }
+            return;
+        }
+
         for (var race : actives) {
             try {
-                var round = roundMapper.selectCurrentByRaceId(race.getId());
+                var round = roundsByRaceId.get(race.getId());
                 if (round == null) continue;
                 var now = nowLdt();
                 switch (round.getStatus() == null ? "" : round.getStatus()) {
                     case "BETTING" -> {
-                        if (!now.isBefore(round.getBetEndAt())) startRaceRound(race, round);
+                        if (!now.isBefore(round.getBetEndAt())) startRaceRound(race, round, null);
                     }
                     case "RACING" -> {
-                        if (!now.isBefore(round.getRaceStartAt().plusSeconds(RACE_DURATION_SECONDS))) settleRound(race, round);
+                        if (!now.isBefore(round.getRaceStartAt().plusSeconds(RACE_DURATION_SECONDS))) settleRound(race, round, null);
                     }
                     case "PODIUM" -> {
-                        if (!now.isBefore(round.getPodiumEndAt())) finishRoundAndAdvance(race, round);
+                        if (!now.isBefore(round.getPodiumEndAt())) finishRoundAndAdvance(race, round, null);
                     }
                     default -> {
                     }
@@ -536,152 +812,185 @@ public class RaceEngineService {
     }
 
     /** 竞猜结束：后端生成随机名次并加密落库，广播种子与开赛时间戳（BETTING -> RACING） */
-    private void startRaceRound(RaceDO race, RaceRoundDO round) {
-        var participants = participantMapper.selectByRaceId(race.getId());
-        if (participants.size() != RACER_COUNT) {
-            log.error("race start: participant count {} != {} race={} round={}", participants.size(), RACER_COUNT, race.getId(), round.getId());
-            return;
-        }
-        int[] rankingIdx = RaceSimulator.randomRanking();
-        String seed = RaceSimulator.findSeedForRanking(rankingIdx);
-        List<Long> rankingPids = new ArrayList<>(RACER_COUNT);
-        for (int idx : rankingIdx) {
-            rankingPids.add(participants.get(idx).getId());
-        }
-        String resultJson;
-        String cipher;
-        String commit;
-        try {
-            resultJson = objectMapper.writeValueAsString(Map.of("roundId", round.getId(), "ranking", rankingPids));
-            cipher = crypto.encrypt(resultJson);
-            commit = crypto.commit(resultJson, seed, round.getId());
-        } catch (Exception e) {
-            log.error("race start: encrypt result failed race={} round={}", race.getId(), round.getId(), e);
-            return;
-        }
-        try (var session = sqlSessionFactory.openSession(false)) {
+    private void startRaceRound(RaceDO race, RaceRoundDO round, Long adminId) {
+        final RaceRoundDO started;
+        try (var transaction = new RaceTransaction();
+             var session = sqlSessionFactory.openSession(false)) {
+            requireActiveRace(session, race.getId());
             var rm = session.getMapper(RaceRoundMapper.class);
-            var locked = rm.selectByIdForUpdate(round.getId());
-            if (locked == null || !"BETTING".equals(locked.getStatus())) return;
-            if (nowLdt().isBefore(locked.getBetEndAt())) return;
-            if (rm.markRacing(round.getId(), seed, cipher, commit) == 0) return;
+            var locked = requireCurrentRound(session, race.getId(), round.getId());
+            var now = nowLdt();
+            if ("BETTING".equals(locked.getStatus())) {
+                if (adminId == null && now.isBefore(locked.getBetEndAt())) return;
+                PreparedResult result;
+                if (Boolean.TRUE.equals(locked.getDeveloperControlled())) {
+                    result = new PreparedResult(locked.getSeed(), locked.getResultCipher(), locked.getResultCommit());
+                } else {
+                    var participants = lineupAssets(session, locked.getLineupJson());
+                    if (participants.size() != RACER_COUNT) throw new BusinessException(ErrorCode.RACE_PARTICIPANT_COUNT);
+                    var ranking = new ArrayList<Long>(RACER_COUNT);
+                    for (int idx : RaceSimulator.randomRanking()) ranking.add(participants.get(idx).getId());
+                    result = prepareResult(round.getId(), participants, ranking);
+                }
+                if (rm.markRacing(round.getId(), result.seed(), result.cipher(), result.commit()) != 1) {
+                    throw new BusinessException(ErrorCode.RACE_PHASE_INVALID);
+                }
+                locked.setSeed(result.seed());
+            } else if (adminId == null) {
+                return;
+            } else if (!"RACING".equals(locked.getStatus()) || !now.isBefore(locked.getRaceStartAt())) {
+                throw new BusinessException(ErrorCode.RACE_PHASE_INVALID, "本场已经开赛或结束，请刷新状态");
+            }
+            if (adminId != null) {
+                now = nowLdt();
+                rm.startImmediately(round.getId(), now);
+                locked.setRaceStartAt(now);
+                locked.setPodiumEndAt(now.plusSeconds(RACE_DURATION_SECONDS + PODIUM_DURATION_SECONDS));
+                recordControl(session, race.getId(), round.getId(), adminId, "START_NOW", Map.of());
+            }
+            started = locked;
             session.commit();
+            transaction.commit();
         }
         broadcastRace(race.getRoomId(), "race_start", Map.of(
-                "roundId", round.getId(),
-                "roundNo", round.getRoundNo(),
-                "seed", seed,
-                "raceStartAt", toMs(round.getRaceStartAt()),
+                "roundId", started.getId(),
+                "roundNo", started.getRoundNo(),
+                "seed", started.getSeed(),
+                "raceStartAt", toMs(started.getRaceStartAt()),
+                "podiumEndAt", toMs(started.getPodiumEndAt()),
+                "developerControlled", Boolean.TRUE.equals(started.getDeveloperControlled()),
                 "durationMs", RACE_DURATION_SECONDS * 1000
         ));
     }
 
-    /** 比赛结束：解密名次 -> 按 60/30/10 分成结算 -> 入账 + 台账 + 通知（RACING -> PODIUM） */
-    private void settleRound(RaceDO race, RaceRoundDO round) {
+    /** 比赛结束：解密名次 -> 位置彩池结算（前三名按赔率瓜分奖池）-> 入账 + 台账 + 通知（RACING -> PODIUM） */
+    private void settleRound(RaceDO race, RaceRoundDO round, Long adminId) {
         final List<Long> ranking;
         final long pool;
         final long paidTotal;
-        final List<RaceSettlementDO> settlements;
+        final boolean refunded;
+        final LocalDateTime podiumEndAt;
+        final Map<Long, Long> horsePools;
         final Map<Long, Long> userBetTotal = new LinkedHashMap<>();
         final Map<Long, Long> userPayout = new LinkedHashMap<>();
         final Map<Long, List<Map<String, Object>>> userWins = new LinkedHashMap<>();
-        final List<RaceBetDO> allBets;
 
-        try (var session = sqlSessionFactory.openSession(false)) {
+        try (var transaction = new RaceTransaction();
+             var session = sqlSessionFactory.openSession(false)) {
+            requireActiveRace(session, race.getId());
             var rm = session.getMapper(RaceRoundMapper.class);
             var bm = session.getMapper(RaceBetMapper.class);
             var sm = session.getMapper(RaceSettlementMapper.class);
-            var locked = rm.selectByIdForUpdate(round.getId());
-            if (locked == null || !"RACING".equals(locked.getStatus())) return;
-            if (nowLdt().isBefore(locked.getRaceStartAt().plusSeconds(RACE_DURATION_SECONDS))) return;
+            var locked = requireCurrentRound(session, race.getId(), round.getId());
+            if (!"RACING".equals(locked.getStatus())) {
+                if (adminId != null) throw new BusinessException(ErrorCode.RACE_PHASE_INVALID, "本场已结算，请刷新状态");
+                return;
+            }
+            if (adminId == null && nowLdt().isBefore(locked.getRaceStartAt().plusSeconds(RACE_DURATION_SECONDS))) return;
 
             String resultJson = crypto.decrypt(locked.getResultCipher());
             if (!crypto.verifyCommit(resultJson, locked.getSeed(), locked.getId(), locked.getResultCommit())) {
-                log.error("race settle: result commit mismatch race={} round={}", race.getId(), round.getId());
+                throw new IllegalStateException("race result commit mismatch round=" + round.getId());
             }
-            ranking = parseRanking(resultJson, round.getId());
-            var participantsById = participantMapper.selectByRaceId(race.getId()).stream()
-                    .collect(Collectors.toMap(RaceParticipantDO::getId, p -> p));
-            allBets = bm.selectActiveByRound(round.getId());
+            ranking = RacePlacePool.parseRanking(resultJson, round.getId());
+            var participantsById = lineupAssets(session, locked.getLineupJson()).stream()
+                    .collect(Collectors.toMap(SpineAssetDO::getId, a -> a));
+            if (ranking.stream().distinct().count() != RACER_COUNT || !participantsById.keySet().containsAll(ranking)) {
+                throw new IllegalStateException("race result participants mismatch round=" + round.getId());
+            }
+            var allBets = bm.selectActiveByRound(round.getId());
             pool = allBets.stream().mapToLong(b -> b.getAmount() == null ? 0 : b.getAmount()).sum();
-
-            long s2 = pool * 30 / 100;
-            long s3 = pool * 10 / 100;
-            long s1 = pool - s2 - s3;
-            long[] shareByRank = {s1, s2, s3};
-
-            settlements = new ArrayList<>();
-            var betPayout = new LinkedHashMap<Long, Long>();
-
-            for (int rank = 0; rank < 3; rank++) {
-                long pid = ranking.get(rank);
-                var rankBets = allBets.stream().filter(b -> pid == (b.getParticipantId() == null ? -1 : b.getParticipantId())).toList();
-                if (rankBets.isEmpty()) continue;
-                var byUser = rankBets.stream().collect(Collectors.groupingBy(RaceBetDO::getUserId));
-                var users = new ArrayList<>(byUser.keySet());
-                users.sort((a, b) -> {
-                    long ia = byUser.get(a).stream().mapToLong(x -> x.getId() == null ? 0 : x.getId()).min().orElse(0);
-                    long ib = byUser.get(b).stream().mapToLong(x -> x.getId() == null ? 0 : x.getId()).min().orElse(0);
-                    return Long.compare(ia, ib);
-                });
-                long share = shareByRank[rank];
-                long base = share / users.size();
-                long rem = share % users.size();
-                for (int i = 0; i < users.size(); i++) {
-                    long uid = users.get(i);
-                    long userShare = base + (i < rem ? 1 : 0);
-                    var userBets = new ArrayList<>(byUser.get(uid));
-                    userBets.sort((x, y) -> Long.compare(x.getId() == null ? 0 : x.getId(), y.getId() == null ? 0 : y.getId()));
-                    long userTotal = userBets.stream().mapToLong(b -> b.getAmount() == null ? 0 : b.getAmount()).sum();
-                    long perBet = userShare / userBets.size();
-                    long perBetRem = userShare % userBets.size();
-                    for (int j = 0; j < userBets.size(); j++) {
-                        betPayout.put(userBets.get(j).getId(), perBet + (j < perBetRem ? 1 : 0));
-                    }
-                    var s = new RaceSettlementDO();
-                    s.setRoundId(round.getId());
-                    s.setUserId(uid);
-                    s.setParticipantId(pid);
-                    s.setRankNo(rank + 1);
-                    s.setBetAmount(userTotal);
-                    s.setPayout(userShare);
-                    settlements.add(s);
-
-                    userPayout.merge(uid, userShare, Long::sum);
-                    var p = participantsById.get(pid);
-                    userWins.computeIfAbsent(uid, k -> new ArrayList<>()).add(Map.of(
-                            "participantId", pid,
-                            "participantName", p == null || p.getName() == null ? "" : p.getName(),
-                            "rankNo", rank + 1,
-                            "payout", userShare
-                    ));
-                }
-            }
-
-            long paid = 0;
+            horsePools = new LinkedHashMap<>();
+            for (var pid : ranking) horsePools.put(pid, 0L);
             for (var bet : allBets) {
-                Long p = betPayout.get(bet.getId());
-                if (p != null) {
-                    bm.updateStatusAndPayout(bet.getId(), "WON", p);
-                    paid += p;
-                } else {
-                    bm.updateStatusAndPayout(bet.getId(), "LOST", null);
+                if (bet.getAssetId() != null) {
+                    horsePools.merge(bet.getAssetId(), bet.getAmount() == null ? 0 : bet.getAmount(), Long::sum);
                 }
             }
-            if (!settlements.isEmpty()) {
-                sm.insertBatch(settlements);
+            var dist = RacePlacePool.distribute(pool, ranking, allBets.stream()
+                    .map(b -> new RacePlacePool.BetInput(
+                            b.getId() == null ? 0 : b.getId(),
+                            b.getUserId() == null ? 0 : b.getUserId(),
+                            b.getAssetId() == null ? -1 : b.getAssetId(),
+                            b.getAmount() == null ? 0 : b.getAmount()))
+                    .toList());
+            refunded = dist.refunded();
+
+            var settlements = new ArrayList<RaceSettlementDO>();
+            if (refunded) {
+                // 前三名全部无人押中且奖池非空：全额退款，不产生派奖与结算行
+                for (var bet : allBets) {
+                    bm.updateStatusAndPayout(bet.getId(), "REFUNDED", null);
+                    lmdWalletService.applyCredit(
+                            session, bet.getUserId(), bet.getAmount(), TX_REFUND, REF_ROUND, round.getId(),
+                            "赛马竞猜退款（无人押中前三名）", "race-refund-" + round.getId() + "-" + bet.getId(), null, adminId
+                    );
+                }
+            } else {
+                var betById = new LinkedHashMap<Long, RaceBetDO>();
+                for (var bet : allBets) betById.put(bet.getId(), bet);
+                for (var e : dist.betPayouts().entrySet()) {
+                    var bet = betById.get(e.getKey());
+                    bm.updateStatusAndPayout(bet.getId(), "WON", e.getValue());
+                    userPayout.merge(bet.getUserId(), e.getValue(), Long::sum);
+                }
+                for (var bet : allBets) {
+                    if (!dist.betPayouts().containsKey(bet.getId())) {
+                        bm.updateStatusAndPayout(bet.getId(), "LOST", null);
+                    }
+                }
+                // 结算行：每用户每个中奖名次一行，payout 为其该马匹注单派奖之和
+                var wonPayoutByUserHorse = new LinkedHashMap<Long, LinkedHashMap<Long, Long>>();
+                var wonAmountByUserHorse = new LinkedHashMap<Long, LinkedHashMap<Long, Long>>();
+                for (var e : dist.betPayouts().entrySet()) {
+                    var bet = betById.get(e.getKey());
+                    wonPayoutByUserHorse.computeIfAbsent(bet.getUserId(), k -> new LinkedHashMap<>())
+                            .merge(bet.getAssetId(), e.getValue(), Long::sum);
+                    wonAmountByUserHorse.computeIfAbsent(bet.getUserId(), k -> new LinkedHashMap<>())
+                            .merge(bet.getAssetId(), bet.getAmount() == null ? 0 : bet.getAmount(), Long::sum);
+                }
+                for (int rank = 0; rank < 3; rank++) {
+                    long pid = ranking.get(rank);
+                    for (var entry : wonPayoutByUserHorse.entrySet()) {
+                        Long payout = entry.getValue().get(pid);
+                        if (payout == null) continue;
+                        var uid = entry.getKey();
+                        var p = participantsById.get(pid);
+                        var s = new RaceSettlementDO();
+                        s.setRoundId(round.getId());
+                        s.setUserId(uid);
+                        s.setAssetId(pid);
+                        s.setRankNo(rank + 1);
+                        s.setBetAmount(wonAmountByUserHorse.get(uid).get(pid));
+                        s.setPayout(payout);
+                        settlements.add(s);
+                        userWins.computeIfAbsent(uid, k -> new ArrayList<>()).add(Map.of(
+                                "assetId", pid,
+                                "participantName", p == null || p.getName() == null ? "" : p.getName(),
+                                "rankNo", rank + 1,
+                                "payout", payout
+                        ));
+                    }
+                }
+                if (!settlements.isEmpty()) sm.insertBatch(settlements);
+                for (var s : settlements) {
+                    lmdWalletService.applyCredit(
+                            session, s.getUserId(), s.getPayout(), TX_PAYOUT, REF_ROUND, round.getId(),
+                            "赛马竞猜中奖", "race-pay-" + round.getId() + "-" + s.getUserId() + "-" + s.getRankNo(), null, null
+                    );
+                }
             }
-            for (var s : settlements) {
-                lmdWalletService.applyCredit(
-                        session, s.getUserId(), s.getPayout(), TX_PAYOUT, REF_ROUND, round.getId(),
-                        "赛马竞猜中奖", "race-pay-" + round.getId() + "-" + s.getUserId(), null, null
-                );
-            }
+
+            long paid = refunded ? 0 : dist.betPayouts().values().stream().mapToLong(Long::longValue).sum();
             for (var bet : allBets) {
                 userBetTotal.merge(bet.getUserId(), bet.getAmount() == null ? 0 : bet.getAmount(), Long::sum);
             }
-            rm.markPodium(round.getId(), paid, nowLdt());
+            var settledAt = nowLdt();
+            podiumEndAt = settledAt.plusSeconds(PODIUM_DURATION_SECONDS);
+            rm.markPodium(round.getId(), paid, settledAt, podiumEndAt);
+            if (adminId != null) recordControl(session, race.getId(), round.getId(), adminId, "SETTLE_NOW", Map.of("paidTotal", paid));
             session.commit();
+            transaction.commit();
             paidTotal = paid;
         }
 
@@ -695,7 +1004,10 @@ public class RaceEngineService {
                 "roundNo", round.getRoundNo(),
                 "ranking", ranking,
                 "totalPool", pool,
-                "paidTotal", paidTotal
+                "paidTotal", paidTotal,
+                "refunded", refunded,
+                "horsePools", horsePools,
+                "podiumEndAt", toMs(podiumEndAt)
         ));
 
         for (var uid : userBetTotal.keySet()) {
@@ -707,9 +1019,10 @@ public class RaceEngineService {
                     "roundNo", round.getRoundNo(),
                     "payout", payout,
                     "betTotal", betTotal,
-                    "wins", wins
+                    "wins", wins,
+                    "refunded", refunded
             ));
-            sendResultNotification(race, round, uid, betTotal, payout, wins);
+            sendResultNotification(race, round, uid, betTotal, payout, wins, refunded);
         }
     }
 
@@ -719,10 +1032,14 @@ public class RaceEngineService {
             long userId,
             long betTotal,
             long payout,
-            List<Map<String, Object>> wins
+            List<Map<String, Object>> wins,
+            boolean refunded
     ) {
         String content;
-        if (payout > 0) {
+        if (refunded) {
+            content = "赛马竞猜结果：你在「" + race.getRoomId() + "」第 " + round.getRoundNo()
+                    + " 场竞猜无人押中前三名，奖池已全额退款，你的 " + betTotal + " 龙门币注金已退回账户。";
+        } else if (payout > 0) {
             if (wins.size() == 1) {
                 var w = wins.get(0);
                 content = "赛马竞猜结果：你在「" + race.getRoomId() + "」第 " + round.getRoundNo() + " 场竞猜中命中「"
@@ -744,7 +1061,8 @@ public class RaceEngineService {
                     "roomId", race.getRoomId(),
                     "payout", payout,
                     "betTotal", betTotal,
-                    "wins", wins
+                    "wins", wins,
+                    "refunded", refunded
             ));
         } catch (Exception e) {
             payloadJson = "{}";
@@ -755,58 +1073,51 @@ public class RaceEngineService {
     }
 
     /** 领奖台结束：轮次收尾并开启下一轮或关闭模式（PODIUM -> FINISHED -> ...） */
-    private void finishRoundAndAdvance(RaceDO race, RaceRoundDO round) {
-        try (var session = sqlSessionFactory.openSession(false)) {
+    private void finishRoundAndAdvance(RaceDO race, RaceRoundDO round, Long adminId) {
+        try (var transaction = new RaceTransaction();
+             var session = sqlSessionFactory.openSession(false)) {
+            var active = requireActiveRace(session, race.getId());
             var rm = session.getMapper(RaceRoundMapper.class);
-            var locked = rm.selectByIdForUpdate(round.getId());
-            if (locked == null || !"PODIUM".equals(locked.getStatus())) return;
-            if (nowLdt().isBefore(locked.getPodiumEndAt())) return;
+            var locked = requireCurrentRound(session, race.getId(), round.getId());
+            if (!"PODIUM".equals(locked.getStatus())) {
+                if (adminId != null) throw new BusinessException(ErrorCode.RACE_PHASE_INVALID);
+                return;
+            }
+            if (adminId == null && nowLdt().isBefore(locked.getPodiumEndAt())) return;
             rm.markFinished(round.getId());
-            int sessionType = race.getSessionType() == null ? 1 : race.getSessionType();
-            int totalRounds = race.getTotalRounds() == null ? 1 : race.getTotalRounds();
-            boolean needNext = sessionType == 3 || (sessionType == 2 && locked.getRoundNo() < totalRounds);
-            if (needNext) {
-                var next = new RaceRoundDO();
+            if (hasNextRound(active, locked)) {
+                var next = rm.selectByRaceAndRoundNo(race.getId(), locked.getRoundNo() + 1);
+                boolean insert = next == null;
+                if (insert) next = new RaceRoundDO();
                 next.setRaceId(race.getId());
                 next.setRoundNo(locked.getRoundNo() + 1);
-                var betDuration = race.getBetDurationSeconds() == null ? DEFAULT_BET_DURATION_SECONDS : race.getBetDurationSeconds();
-                var betStart = locked.getPodiumEndAt();
-                var betEnd = betStart.plusSeconds(betDuration);
+                String nextLineupJson = locked.getNextLineupJson();
+                if (nextLineupJson == null && Integer.valueOf(3).equals(active.getSessionType())
+                        && Integer.valueOf(2).equals(active.getParticipantMode())) {
+                    // 无限循环+随机模式：下一场重新随机 5 名（开发者未指定下一场名单时）
+                    nextLineupJson = randomLineupJson(session);
+                }
+                next.setLineupJson(nextLineupJson == null ? locked.getLineupJson() : nextLineupJson);
+                var betStart = nowLdt();
+                var betEnd = betStart.plusSeconds(active.getBetDurationSeconds());
                 next.setStatus("BETTING");
                 next.setBetStartAt(betStart);
                 next.setBetEndAt(betEnd);
                 next.setRaceStartAt(betEnd.plusSeconds(PRE_RACE_SECONDS));
                 next.setPodiumEndAt(betEnd.plusSeconds(PRE_RACE_SECONDS + RACE_DURATION_SECONDS + PODIUM_DURATION_SECONDS));
-                next.setTotalPool(0L);
-                next.setBetCount(0);
-                next.setPaidTotal(0L);
-                rm.insert(next);
+                if (insert) rm.insert(next);
+                else if (rm.reschedule(next) != 1) throw new BusinessException(ErrorCode.RACE_PHASE_INVALID);
             } else {
                 session.getMapper(RaceMapper.class).updateStatus(race.getId(), "CLOSED");
             }
+            if (adminId != null) recordControl(session, race.getId(), round.getId(), adminId, "END_PODIUM", Map.of());
             session.commit();
+            transaction.commit();
         }
         broadcastRaceUpdate(race.getRoomId());
     }
 
     // ---------- 工具 ----------
-
-    private List<Long> parseRanking(String resultJson, long roundId) {
-        try {
-            JsonNode node = objectMapper.readTree(resultJson);
-            var arr = node.get("ranking");
-            if (arr == null || !arr.isArray() || arr.size() != RACER_COUNT) {
-                throw new IllegalStateException("bad ranking payload");
-            }
-            var list = new ArrayList<Long>(RACER_COUNT);
-            for (var v : arr) {
-                list.add(v.asLong());
-            }
-            return list;
-        } catch (Exception e) {
-            throw new IllegalStateException("race result parse failed round=" + roundId, e);
-        }
-    }
 
     private RaceBrief toBrief(RaceDO race) {
         return new RaceBrief(
@@ -821,24 +1132,14 @@ public class RaceEngineService {
         );
     }
 
-    private ParticipantInfo toParticipantInfo(RaceParticipantDO p) {
-        return new ParticipantInfo(
-                p.getId(),
-                p.getSortNo() == null ? 0 : p.getSortNo(),
-                p.getAssetKey(),
-                p.getName(),
-                p.getType() == null ? 2 : p.getType()
-        );
-    }
-
     private RoundInfo toRoundInfo(RaceRoundDO r) {
         List<Long> ranking = null;
         var status = r.getStatus();
         if (("PODIUM".equals(status) || "FINISHED".equals(status)) && r.getResultCipher() != null) {
             try {
-                ranking = parseRanking(crypto.decrypt(r.getResultCipher()), r.getId());
+                ranking = RacePlacePool.parseRanking(crypto.decrypt(r.getResultCipher()), r.getId());
             } catch (Exception e) {
-                log.error("round info: decrypt ranking failed round={}", r.getId(), e);
+                log.warn("round info: result cipher undecryptable (legacy key or corrupt), ranking hidden round={}", r.getId(), e);
             }
         }
         return new RoundInfo(
@@ -849,11 +1150,12 @@ public class RaceEngineService {
                 toMs(r.getBetEndAt()),
                 toMs(r.getRaceStartAt()),
                 toMs(r.getPodiumEndAt()),
-                r.getSeed(),
+                "BETTING".equals(status) ? null : r.getSeed(),
                 r.getTotalPool() == null ? 0 : r.getTotalPool(),
                 r.getBetCount() == null ? 0 : r.getBetCount(),
                 r.getPaidTotal() == null ? 0 : r.getPaidTotal(),
-                ranking
+                ranking,
+                Boolean.TRUE.equals(r.getDeveloperControlled())
         );
     }
 

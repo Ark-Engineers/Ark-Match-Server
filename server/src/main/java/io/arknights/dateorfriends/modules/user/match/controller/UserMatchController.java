@@ -37,5 +37,14 @@ public class UserMatchController {
         var safeOffset = Math.max(0, offset);
         return matchService.recommend(principal.userId(), safeLimit, safeOffset).map(ApiResponse::ok);
     }
+
+    @GetMapping("/stats")
+    public Mono<ApiResponse<MatchStats>> stats(ServerWebExchange exchange) {
+        var principal = exchange.<JwtPrincipal>getAttribute(AuthWebFilter.ATTR_PRINCIPAL);
+        if (principal == null) return Mono.error(new BusinessException(ErrorCode.UNAUTHORIZED));
+        return Mono.just(ApiResponse.ok(new MatchStats(0, 0, 0)));
+    }
+
+    public record MatchStats(int pendingCount, int confirmedCount, int totalCount) {}
 }
 

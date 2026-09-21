@@ -659,6 +659,26 @@ public interface UserMapper {
             @Param("offset") int offset
     );
 
+    @Select("""
+            SELECT
+              id, account, email, role, nickname,
+              avatar_url AS avatarUrl,
+              status,
+              email_verified_at AS emailVerifiedAt,
+              last_login_at AS lastLoginAt,
+              last_login_ip AS lastLoginIp,
+              login_fail_count AS loginFailCount,
+              locked_until AS lockedUntil,
+              created_at AS createdAt,
+              updated_at AS updatedAt,
+              deleted,
+              deleted_at AS deletedAt
+            FROM `user`
+            WHERE id = #{id}
+            LIMIT 1
+            """)
+    UserDO selectByIdForAdmin(@Param("id") long id);
+
     @Update("""
             <script>
             UPDATE `user`
