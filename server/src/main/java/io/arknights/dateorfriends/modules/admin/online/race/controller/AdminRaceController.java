@@ -8,10 +8,13 @@ import io.arknights.dateorfriends.tools.web.ApiResponse;
 import io.arknights.dateorfriends.tools.web.BusinessException;
 import io.arknights.dateorfriends.tools.web.ErrorCode;
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.Digits;
+import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
+import java.math.BigDecimal;
 import java.util.List;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -42,18 +45,13 @@ public class AdminRaceController {
             int sessionType,
             Integer totalRounds,
             int participantMode,
-            List<Long> participantAssetIds,
-            Long betStartAtMs,
-            Long betEndAtMs
+            @Size(max = 5) List<@Min(1) Long> participantAssetIds,
+            @Min(1) Long betStartAtMs,
+            @NotNull @Digits(integer = 5, fraction = 0) @Min(1) @Max(86400) BigDecimal betDurationSeconds,
+            @NotNull @Digits(integer = 5, fraction = 0) @Min(0) @Max(86400) BigDecimal preRaceDurationSeconds,
+            @NotNull @Digits(integer = 5, fraction = 0) @Min(1) @Max(86400) BigDecimal raceDurationSeconds,
+            @NotNull @Digits(integer = 5, fraction = 0) @Min(1) @Max(86400) BigDecimal podiumDurationSeconds
     ) {
-    }
-
-    @GetMapping("/catalog")
-    public Mono<ApiResponse<List<RaceEngineService.AssetOption>>> catalog(ServerWebExchange exchange) {
-        requireAdmin(exchange);
-        return Mono.fromCallable(engine::catalog)
-                .subscribeOn(Schedulers.boundedElastic())
-                .map(ApiResponse::ok);
     }
 
     @GetMapping("/list")
@@ -64,7 +62,16 @@ public class AdminRaceController {
                 .map(ApiResponse::ok);
     }
 
-    /** 创建赛马模式：仅 ADMIN/SUPER_ADMIN；sessionType=3（无限循环）无需指定竞猜起止时间，创建后立即开始 */
+    /** 可参赛对象目录（敌人/Boss spine 资产），供创建赛马模式时手动选择 */
+    @GetMapping("/catalog")
+    public Mono<ApiResponse<List<RaceEngineService.AssetOption>>> catalog(ServerWebExchange exchange) {
+        requireAdmin(exchange);
+        return Mono.fromCallable(engine::catalog)
+                .subscribeOn(Schedulers.boundedElastic())
+                .map(ApiResponse::ok);
+    }
+
+    /** 无限循环立即开始，其余场次仅指定竞猜开始时间。 */
     @PostMapping("/create")
     public Mono<ApiResponse<Long>> create(
             @Valid @RequestBody CreateRequest req,
@@ -79,11 +86,37 @@ public class AdminRaceController {
                 req.participantMode(),
                 req.participantAssetIds(),
                 req.betStartAtMs(),
-                req.betEndAtMs()
+                req.betDurationSeconds().intValueExact(),
+                req.preRaceDurationSeconds().intValueExact(),
+                req.raceDurationSeconds().intValueExact(),
+                req.podiumDurationSeconds().intValueExact()
         );
         return Mono.fromCallable(() -> engine.createRace(admin.userId(), mapped))
                 .subscribeOn(Schedulers.boundedElastic())
                 .map(ApiResponse::ok);
+    }
+
+    public record DurationsRequest(
+            @Min(1) long roundId,
+            @NotBlank String expectedStatus,
+            @NotNull @Digits(integer = 5, fraction = 0) @Min(1) @Max(86400) BigDecimal betDurationSeconds,
+            @NotNull @Digits(integer = 5, fraction = 0) @Min(0) @Max(86400) BigDecimal preRaceDurationSeconds,
+            @NotNull @Digits(integer = 5, fraction = 0) @Min(1) @Max(86400) BigDecimal raceDurationSeconds,
+            @NotNull @Digits(integer = 5, fraction = 0) @Min(1) @Max(86400) BigDecimal podiumDurationSeconds
+    ) {
+    }
+
+    @PostMapping("/{id}/durations")
+    public Mono<ApiResponse<Boolean>> updateDurations(
+            @PathVariable("id") long id, @Valid @RequestBody DurationsRequest req,
+            ServerWebExchange exchange
+    ) {
+        var admin = requireAdmin(exchange);
+        return Mono.fromCallable(() -> {
+            engine.updateDurations(admin.userId(), id, req.roundId(), req.expectedStatus(),
+                    req.betDurationSeconds().intValueExact(), req.preRaceDurationSeconds().intValueExact(), req.raceDurationSeconds().intValueExact(), req.podiumDurationSeconds().intValueExact());
+            return true;
+        }).subscribeOn(Schedulers.boundedElastic()).map(ApiResponse::ok);
     }
 
     @PostMapping("/{id}/close")
@@ -134,12 +167,6 @@ public class AdminRaceController {
     ) {
     }
 
-    public record NextParticipantsRequest(
-            @Min(1) long roundId,
-            @NotNull @Size(max = 5) List<@NotNull @Min(1) Long> assetIds
-    ) {
-    }
-
     /** 仅 SUPER_ADMIN 查询控制状态；仅演示场返回预设名次，普通竞猜不提前公开排名。 */
     @GetMapping("/{id}/developer")
     public Mono<ApiResponse<RaceEngineService.DeveloperState>> developer(
@@ -176,15 +203,20 @@ public class AdminRaceController {
         }).subscribeOn(Schedulers.boundedElastic()).map(ApiResponse::ok);
     }
 
-    /** 仅 SUPER_ADMIN 指定下一轮五名敌人或Boss；空数组清除计划，最后一轮不可设置。 */
+    public record NextParticipantsRequest(
+            @Size(max = 5) List<@NotNull @Min(1) Long> assetIds
+    ) {
+    }
+
+    /** 仅 SUPER_ADMIN 指定下一场参赛名单；传空数组清除指定（恢复按 participantMode 决定）。 */
     @PostMapping("/{id}/developer/next-participants")
-    public Mono<ApiResponse<Boolean>> nextParticipants(
+    public Mono<ApiResponse<Boolean>> setNextParticipants(
             @PathVariable("id") long id, @Valid @RequestBody NextParticipantsRequest req,
             ServerWebExchange exchange
     ) {
         var admin = requireSuperAdmin(exchange);
         return Mono.fromCallable(() -> {
-            engine.setNextParticipants(admin.userId(), id, req.roundId(), req.assetIds());
+            engine.setNextParticipants(admin.userId(), id, req.assetIds());
             return true;
         }).subscribeOn(Schedulers.boundedElastic()).map(ApiResponse::ok);
     }

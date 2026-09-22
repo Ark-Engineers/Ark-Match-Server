@@ -191,7 +191,7 @@ public class OnlineWebSocketHandlerV2 implements WebSocketHandler {
 
             if (room.hostClientId != null && room.hostClientId.equals(clientId)) {
                 room.hostClientId = room.pickNextHost();
-                room.broadcastAll(toJson(Map.of("type", "host_change", "hostClientId", room.hostClientId, "hostFps", room.hostFps)));
+                broadcastHostChange(room);
             }
 
             if (room.players.isEmpty()) {
@@ -541,8 +541,14 @@ public class OnlineWebSocketHandlerV2 implements WebSocketHandler {
 
         if (room.hostClientId != null && room.getConnected(room.hostClientId) == null) {
             room.hostClientId = room.pickNextHost();
-            room.broadcastAll(toJson(Map.of("type", "host_change", "hostClientId", room.hostClientId, "hostFps", room.hostFps)));
+            broadcastHostChange(room);
         }
+    }
+
+    /** 房主变更广播；全员断线（宽限期）无新房东时跳过，避免 hostClientId=null 触发 Map.of NPE */
+    private void broadcastHostChange(Room room) {
+        if (room.hostClientId == null) return;
+        room.broadcastAll(toJson(Map.of("type", "host_change", "hostClientId", room.hostClientId, "hostFps", room.hostFps)));
     }
 
     // ---------- 赛马模式外部广播接口 ----------
@@ -716,6 +722,7 @@ public class OnlineWebSocketHandlerV2 implements WebSocketHandler {
                 rooms.remove(roomId);
                 return;
             }
+            if (hostClientId == null) return; // 全员断线宽限期：无在线房东可收快照，等新玩家加入时重新指派
 
             var dt = 1.0 / TICK_HZ;
             for (var slot : players.values()) {

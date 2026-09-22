@@ -22,7 +22,10 @@ CREATE TABLE `horse_race` (
   `session_type` TINYINT NOT NULL DEFAULT 1 COMMENT '场次类型：1=一次性；2=限定场次数量；3=无限循环',
   `total_rounds` INT NOT NULL DEFAULT 1 COMMENT '总场次数（session_type=1 恒为1；=2 为配置值；=3 恒为0表示不限）',
   `participant_mode` TINYINT NOT NULL DEFAULT 1 COMMENT '参赛对象生成规则：1=手动选择；2=随机生成（均取自 spine_asset type 2/3）',
-  `bet_duration_seconds` INT NOT NULL DEFAULT 120 COMMENT '单轮竞猜周期（秒；>=60）',
+  `bet_duration_seconds` INT NOT NULL DEFAULT 120 COMMENT '单轮竞猜周期（秒；>=1且<=86400，服务层校验）',
+  `pre_race_duration_seconds` INT NOT NULL DEFAULT 30 COMMENT '单轮预备时长（秒；>=0且<=86400，服务层校验）',
+  `race_duration_seconds` INT NOT NULL DEFAULT 60 COMMENT '单轮比赛时长（秒；>=1且<=86400，服务层校验）',
+  `podium_duration_seconds` INT NOT NULL DEFAULT 60 COMMENT '单轮领奖台时长（秒；>=1且<=86400，服务层校验）',
 
   `created_by` BIGINT NOT NULL COMMENT '创建人ID（管理员 user.id）',
   `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
@@ -34,21 +37,21 @@ CREATE TABLE `horse_race` (
   CONSTRAINT `fk_horse_race_created_by` FOREIGN KEY (`created_by`) REFERENCES `user` (`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='赛马模式实例表（每房间一个进行中实例）';
 
--- 轮次：每轮 = 竞猜周期 + 30秒预备 + 60秒比赛 + 60秒领奖台
--- 参赛名单不建表：lineup_json 存 spine_asset.id 的 JSON 数组（按道次排序），动画/缩放随 spine_asset 配置读取
+-- 轮次：每轮 = 竞猜 + 预备 + 比赛 + 领奖台；四阶段时长在创建轮次时从模式配置保存为快照
+-- 参赛名单不建表：每轮开赛时从 spine_asset（type 2/3）抓取 5 个 id 回写 racer_ids（逗号分隔，按道次排序；手动选择或随机生成），展示/下注/结算按 id 回查 spine_asset
 CREATE TABLE `horse_race_round` (
   `id` BIGINT NOT NULL AUTO_INCREMENT COMMENT '主键，自增',
   `race_id` BIGINT NOT NULL COMMENT '模式ID（horse_race.id）',
   `round_no` INT NOT NULL COMMENT '场次序号（从1递增）',
-  `lineup_json` TEXT NULL COMMENT '本轮参赛名单（spine_asset.id 的 JSON 数组，按道次排序）',
-  `next_lineup_json` TEXT NULL COMMENT '下一轮指定名单（spine_asset.id 的 JSON 数组；NULL 表示沿用本轮）',
+  `bet_duration_seconds` INT NOT NULL DEFAULT 120 COMMENT '本轮竞猜时长快照（秒；>=1且<=86400，服务层校验）',
+  `pre_race_duration_seconds` INT NOT NULL DEFAULT 30 COMMENT '本轮预备时长快照（秒；>=0且<=86400，服务层校验）',
+  `race_duration_seconds` INT NOT NULL DEFAULT 60 COMMENT '本轮比赛时长快照（秒；>=1且<=86400，服务层校验）',
+  `podium_duration_seconds` INT NOT NULL DEFAULT 60 COMMENT '本轮领奖台时长快照（秒；>=1且<=86400，服务层校验）',
+  `racer_ids` VARCHAR(255) NULL COMMENT '本场参赛 spine_asset.id（逗号分隔，按道次排序；手动选择或开赛时随机抓取回写）',
   `developer_controlled` TINYINT NOT NULL DEFAULT 0 COMMENT '是否由开发者指定名次：0=否；1=是',
 
   `status` VARCHAR(16) NOT NULL DEFAULT 'BETTING' COMMENT '轮次状态：BETTING=竞猜中；RACING=比赛中；PODIUM=领奖台；FINISHED=已结束',
-  `bet_start_at` DATETIME NOT NULL COMMENT '竞猜开始时间',
-  `bet_end_at` DATETIME NOT NULL COMMENT '竞猜结束时间（比赛前30秒关闭通道：race_start_at=bet_end_at+30秒）',
-  `race_start_at` DATETIME NOT NULL COMMENT '比赛开始时间（前端动画起点，高精度时间戳同步基准）',
-  `podium_end_at` DATETIME NOT NULL COMMENT '领奖台结束时间（初始race_start_at+120秒，结算后按实际结算时间+60秒）',
+  `bet_start_at` DATETIME NOT NULL COMMENT '竞猜开始时间（其余阶段时间由此 + 本轮时长快照推算）',
 
   `seed` VARCHAR(32) NULL COMMENT '动画随机种子（hex；演示名次可提前生成，BETTING阶段接口不下发）',
   `result_cipher` TEXT NULL COMMENT '名次结果密文（AES-GCM；仅服务端解密，任何阶段不传输前端）',

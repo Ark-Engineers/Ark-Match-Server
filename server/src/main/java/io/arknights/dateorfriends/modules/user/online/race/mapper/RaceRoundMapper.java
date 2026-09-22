@@ -13,8 +13,10 @@ import org.apache.ibatis.annotations.Update;
 public interface RaceRoundMapper {
 
     @Insert("""
-            INSERT INTO horse_race_round(race_id, round_no, lineup_json, status, bet_start_at, bet_end_at, race_start_at, podium_end_at)
-            VALUES(#{raceId}, #{roundNo}, #{lineupJson}, #{status}, #{betStartAt}, #{betEndAt}, #{raceStartAt}, #{podiumEndAt})
+            INSERT INTO horse_race_round(race_id, round_no, racer_ids, status, bet_start_at,
+                bet_duration_seconds, pre_race_duration_seconds, race_duration_seconds, podium_duration_seconds)
+            VALUES(#{raceId}, #{roundNo}, #{racerIds}, #{status}, #{betStartAt},
+                #{betDurationSeconds}, #{preRaceDurationSeconds}, #{raceDurationSeconds}, #{podiumDurationSeconds})
             """)
     @Options(useGeneratedKeys = true, keyProperty = "id")
     int insert(RaceRoundDO round);
@@ -60,12 +62,6 @@ public interface RaceRoundMapper {
     List<RaceRoundDO> selectByRaceId(@Param("raceId") long raceId);
 
     @Update("""
-            UPDATE horse_race_round SET next_lineup_json=#{lineupJson}
-            WHERE id=#{id} AND status IN ('BETTING','RACING','PODIUM')
-            """)
-    int updateNextLineupJson(@Param("id") long id, @Param("lineupJson") String lineupJson);
-
-    @Update("""
             UPDATE horse_race_round
             SET developer_controlled=1, seed=#{seed}, result_cipher=#{resultCipher}, result_commit=#{resultCommit}
             WHERE id=#{id} AND status='BETTING' AND bet_count=0
@@ -77,21 +73,46 @@ public interface RaceRoundMapper {
             @Param("resultCommit") String resultCommit
     );
 
+    /** 立即开赛：回写推算后的竞猜开始时间（开赛时间 = 该值 + 竞猜 + 预备），使比赛从当前时刻开始 */
     @Update("""
             UPDATE horse_race_round
-            SET bet_start_at=LEAST(bet_start_at, #{now}), bet_end_at=LEAST(bet_end_at, #{now}),
-                race_start_at=#{now}, podium_end_at=DATE_ADD(#{now}, INTERVAL 120 SECOND)
+            SET bet_start_at=#{betStartAt}
             WHERE id=#{id} AND status IN ('BETTING','RACING')
             """)
-    int startImmediately(@Param("id") long id, @Param("now") LocalDateTime now);
+    int startImmediately(@Param("id") long id, @Param("betStartAt") LocalDateTime betStartAt);
 
     @Update("""
             UPDATE horse_race_round
-            SET lineup_json=#{lineupJson}, bet_start_at=#{betStartAt}, bet_end_at=#{betEndAt},
-                race_start_at=#{raceStartAt}, podium_end_at=#{podiumEndAt}
-            WHERE id=#{id} AND status='BETTING' AND bet_count=0
+            SET bet_duration_seconds=#{betDurationSeconds}, pre_race_duration_seconds=#{preRaceDurationSeconds},
+                race_duration_seconds=#{raceDurationSeconds}, podium_duration_seconds=#{podiumDurationSeconds}
+            WHERE id=#{id} AND race_id=#{raceId} AND status=#{status}
             """)
-    int reschedule(RaceRoundDO round);
+    int updateDurationsOnly(RaceRoundDO round);
+
+    /** 复用空占位轮次开启下一场：不限当前状态（兼容迁移遗留的 FINISHED 占位），仅从未开赛、无下注、无结果的空轮次 */
+    @Update("""
+            UPDATE horse_race_round
+            SET racer_ids=#{racerIds}, status='BETTING', bet_start_at=#{betStartAt}, next_lineup_json=NULL,
+                bet_duration_seconds=#{betDurationSeconds}, pre_race_duration_seconds=#{preRaceDurationSeconds},
+                race_duration_seconds=#{raceDurationSeconds}, podium_duration_seconds=#{podiumDurationSeconds}
+            WHERE id=#{id} AND bet_count=0 AND total_pool=0 AND paid_total=0
+              AND settled_at IS NULL AND seed IS NULL AND result_cipher IS NULL AND result_commit IS NULL
+            """)
+    int resetEmptyPlaceholder(RaceRoundDO round);
+
+    @Update("""
+            UPDATE horse_race_round
+            SET racer_ids=#{racerIds}, bet_start_at=#{betStartAt}
+            WHERE id=#{id} AND status='BETTING' AND bet_count=0 AND total_pool=0 AND paid_total=0
+              AND settled_at IS NULL AND seed IS NULL AND result_cipher IS NULL AND result_commit IS NULL
+              AND COALESCE(developer_controlled, 0)=0
+              AND NOT EXISTS (SELECT 1 FROM horse_race_bet WHERE round_id=#{id})
+              AND NOT EXISTS (SELECT 1 FROM horse_race_settlement WHERE round_id=#{id})
+            """)
+    int repairEmptyBettingLineup(RaceRoundDO round);
+
+    @Update("UPDATE horse_race_round SET next_lineup_json=#{nextLineupJson} WHERE id=#{id}")
+    int updateNextLineupJson(@Param("id") long id, @Param("nextLineupJson") String nextLineupJson);
 
     /** 竞猜结束：生成名次与种子，BETTING -> RACING；影响行数为0说明已被其他流程处理 */
     @Update("""
@@ -109,14 +130,13 @@ public interface RaceRoundMapper {
     /** 结算完成：RACING -> PODIUM */
     @Update("""
             UPDATE horse_race_round
-            SET status='PODIUM', paid_total=#{paidTotal}, settled_at=#{settledAt}, podium_end_at=#{podiumEndAt}
+            SET status='PODIUM', paid_total=#{paidTotal}, settled_at=#{settledAt}
             WHERE id=#{id} AND status='RACING'
             """)
     int markPodium(
             @Param("id") long id,
             @Param("paidTotal") long paidTotal,
-            @Param("settledAt") LocalDateTime settledAt,
-            @Param("podiumEndAt") LocalDateTime podiumEndAt
+            @Param("settledAt") LocalDateTime settledAt
     );
 
     /** 领奖台结束：PODIUM -> FINISHED */

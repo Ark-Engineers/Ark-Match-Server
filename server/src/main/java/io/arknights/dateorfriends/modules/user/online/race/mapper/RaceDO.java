@@ -13,6 +13,9 @@ public class RaceDO {
     private Integer totalRounds;
     private Integer participantMode;
     private Integer betDurationSeconds;
+    private Integer preRaceDurationSeconds;
+    private Integer raceDurationSeconds;
+    private Integer podiumDurationSeconds;
     private Long createdBy;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;

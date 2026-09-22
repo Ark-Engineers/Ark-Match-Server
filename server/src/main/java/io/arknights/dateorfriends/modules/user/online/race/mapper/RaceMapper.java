@@ -12,8 +12,10 @@ import org.apache.ibatis.annotations.Update;
 public interface RaceMapper {
 
     @Insert("""
-            INSERT INTO horse_race(room_id, name, status, session_type, total_rounds, participant_mode, bet_duration_seconds, created_by)
-            VALUES(#{roomId}, #{name}, #{status}, #{sessionType}, #{totalRounds}, #{participantMode}, #{betDurationSeconds}, #{createdBy})
+            INSERT INTO horse_race(room_id, name, status, session_type, total_rounds, participant_mode,
+                bet_duration_seconds, pre_race_duration_seconds, race_duration_seconds, podium_duration_seconds, created_by)
+            VALUES(#{roomId}, #{name}, #{status}, #{sessionType}, #{totalRounds}, #{participantMode},
+                #{betDurationSeconds}, #{preRaceDurationSeconds}, #{raceDurationSeconds}, #{podiumDurationSeconds}, #{createdBy})
             """)
     @Options(useGeneratedKeys = true, keyProperty = "id")
     int insert(RaceDO race);
@@ -45,6 +47,13 @@ public interface RaceMapper {
 
     @Select("SELECT * FROM horse_race WHERE status='ACTIVE'")
     List<RaceDO> selectActive();
+
+    @Update("""
+            UPDATE horse_race SET bet_duration_seconds=#{betDurationSeconds}, pre_race_duration_seconds=#{preRaceDurationSeconds},
+                race_duration_seconds=#{raceDurationSeconds}, podium_duration_seconds=#{podiumDurationSeconds}
+            WHERE id=#{id} AND status='ACTIVE'
+            """)
+    int updateDurations(RaceDO race);
 
     @Update("UPDATE horse_race SET status=#{status} WHERE id=#{id}")
     int updateStatus(@Param("id") long id, @Param("status") String status);

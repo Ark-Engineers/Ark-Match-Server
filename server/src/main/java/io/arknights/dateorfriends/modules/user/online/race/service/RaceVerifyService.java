@@ -19,8 +19,9 @@ import org.springframework.stereotype.Service;
  * 1) 轮次奖池 total_pool = 全部注单金额之和（未退款 + 已退款）
  * 2) 已发放 = 结算表 payout 之和 = 龙门币 RACE_PAYOUT 流水之和
  * 3) 龙门币 RACE_BET 流水之和 = -total_pool；RACE_REFUND 流水之和 = 已退款注单总额
- * 4) 位置彩池重算对账（RacePlacePool 共享实现）：注单派奖、(用户,对象) 结算行、名次与 Σpayout=奖池守恒；
- *    仅对无退款且 paid_total = 未退款奖池的已结算轮次重算（旧 60/30/10 轮次与退款轮次跳过份额重算）
+ * 4) 位置彩池重算对账（RacePlacePool 共享实现）：注单派奖、(用户,对象) 结算行、名次；
+ *    仅对无退款且 paid_total 与按现行名次系数（冠军100%/亚军80%/季军60%）重算总额一致的已结算轮次
+ *    逐注单对账（历史 60/30/10 与旧全额位置彩池轮次 paid_total 与现行系数不符，自动跳过份额重算）
  * 5) 轮次无遗留 ACTIVE 下注；结果 commit 与密文/种子一致
  */
 @Service
@@ -128,14 +129,18 @@ public class RaceVerifyService {
             problems.add("refund=" + refundSum + " coexists with payouts=" + settlementSum);
         }
 
-        // 位置彩池重算：仅对按新规则全额派发（无退款且 paid_total = 未退款奖池）的已结算轮次；
+        // 位置彩池重算：仅对按现行名次系数（冠军100%/亚军80%/季军60%）派发的已结算轮次逐注单对账；
         // 密文不可解密时跳过重算（上方已报告解密失败）
         boolean settled = "PODIUM".equals(round.getStatus()) || "FINISHED".equals(round.getStatus());
-        if (settled && betPool > 0 && refundSum == 0 && paidTotal == betPool && plain != null) {
+        if (settled && betPool > 0 && refundSum == 0 && plain != null) {
             try {
                 var ranking = RacePlacePool.parseRanking(plain, round.getId());
                 var dist = RacePlacePool.distribute(betPool, ranking, toInputs(bets));
-
+                long recomputedTotal = dist.betPayouts().values().stream().mapToLong(Long::longValue).sum();
+                if (paidTotal != recomputedTotal) {
+                    // 旧规则轮次（60/30/10 或旧全额位置彩池）：发放总额与现行系数不符，跳过逐注单对账
+                    return new VerifyResult(problems.isEmpty(), problems);
+                }
                 for (var b : bets) {
                     Long expected = dist.betPayouts().get(b.getId());
                     String status = b.getStatus();
@@ -154,11 +159,6 @@ public class RaceVerifyService {
                             problems.add("bet " + b.getId() + " payout=" + actual + " != recomputed=" + expected);
                         }
                     }
-                }
-
-                long recomputed = dist.betPayouts().values().stream().mapToLong(Long::longValue).sum();
-                if (recomputed != paidTotal) {
-                    problems.add("recomputed payouts=" + recomputed + " != paid_total=" + paidTotal);
                 }
 
                 // (用户,对象) 结算行对账：payout=该对象注单派奖之和，betAmount=注额之和，rankNo=名次

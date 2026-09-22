@@ -204,6 +204,7 @@ dateOrFriends/
               2026-09-21_spine_animations.sql
               2026-09-22_race_drop_participant.sql
               2026-09-22_race_drop_participant_continue.sql
+              2026-09-22_race_round_racer_ids.sql
               2026-09-22_spine_race_anim_config.sql
             modules/
               admin/

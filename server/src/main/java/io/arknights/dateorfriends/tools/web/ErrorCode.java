@@ -54,6 +54,7 @@ public enum ErrorCode {
     RACE_ASSET_NOT_ENOUGH(2051, "敌人与Boss资源不足5个，无法开启随机模式"),
     RACE_ROUNDS_INVALID(2052, "场次数量不合法"),
     RACE_AMOUNT_INVALID(2053, "下注金额不合法"),
+    RACE_RESULT_DECRYPT_FAILED(2054, "名次结果解密失败，密钥可能已变更"),
 
     TOKEN_EXPIRED(3000, "令牌已过期"),
     TOKEN_REVOKED(3001, "令牌已失效"),
