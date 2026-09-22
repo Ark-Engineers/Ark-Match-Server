@@ -123,6 +123,16 @@ public class OnlineWebSocketHandlerV2 implements WebSocketHandler {
             return Mono.empty();
         }
         var type = String.valueOf(msg.getOrDefault("type", ""));
+        if ("ping".equals(type)) {
+            // 主连接存活探测：前端据此识别半开连接并强制重连（广播在背压时可能静默丢弃）
+            var pong = new java.util.LinkedHashMap<String, Object>();
+            pong.put("type", "pong");
+            pong.put("ts", msg.getOrDefault("ts", 0L));
+            pong.put("src", msg.getOrDefault("src", ""));
+            pong.put("serverTs", System.currentTimeMillis());
+            ctx.sink.tryEmitNext(toJson(pong));
+            return Mono.empty();
+        }
         if ("join".equals(type)) {
             var roomRaw = msg.get("roomId") != null ? String.valueOf(msg.get("roomId")) : queryParam(uri, "room");
             var roomId = safeRoomId(roomRaw);

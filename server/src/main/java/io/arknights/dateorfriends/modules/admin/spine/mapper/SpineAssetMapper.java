@@ -130,4 +130,21 @@ public interface SpineAssetMapper {
             </script>
             """)
     List<SpineAssetDO> listByTypes(@Param("types") List<Integer> types, @Param("limit") int limit);
+
+    @Update("""
+            UPDATE spine_asset
+            SET race_count = race_count + 1,
+                first_place_count = first_place_count + #{first},
+                second_place_count = second_place_count + #{second},
+                third_place_count = third_place_count + #{third},
+                unplaced_count = unplaced_count + #{unplaced}
+            WHERE id = #{id}
+            """)
+    int incrementRaceStats(
+            @Param("id") long id,
+            @Param("first") int first,
+            @Param("second") int second,
+            @Param("third") int third,
+            @Param("unplaced") int unplaced
+    );
 }

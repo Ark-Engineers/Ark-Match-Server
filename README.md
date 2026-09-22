@@ -758,7 +758,7 @@ app:
 
 ### 14.3 用户端接口（/user/online/race，需登录）
 
-- `GET /user/online/race/state?roomId=`：查询房间当前赛马状态（模式/轮次/参赛名单/各参赛对象彩池 horsePools/本人下注/总额区间/服务器时间戳）
+- `GET /user/online/race/state?roomId=`：查询房间当前赛马状态（模式/轮次/参赛名单/各参赛对象彩池 horsePools/本人下注 myBets、myTotal/个人结算 myResult（PODIUM/FINISHED 且有下注时返回：payout、betTotal、wins，用于 WS 定向消息丢失后的 HTTP 兜底恢复）/总额区间/服务器时间戳）
 - `POST /user/online/race/bet`：下注（body: roomId / assetId / amount；assetId 为 spine_asset.id；Redis 限流 12 次/分钟；校验在房内、阶段 BETTING、总额区间、Boss 去重）
 
 ### 14.4 管理端接口（/admin/online/race，仅 ADMIN/SUPER_ADMIN）
@@ -778,6 +778,7 @@ app:
 - `race_result`：结算结果（roundId / roundNo / ranking 参赛对象ID数组 / totalPool / paidTotal / podiumEndAt / horsePools 各参赛对象最终彩池）
 - `race_my_result`：定向推送本人结果（roundId / roundNo / payout / betTotal / wins）
 - WS 房主变更 NPE 修复（2026-09-22）：房主断线且房间无其他在线玩家时 `pickNextHost()` 返回 null，`host_change` 与 `snapshot` 广播的 `Map.of` 不允许 null 值抛 NullPointerException（leave 消息、连接清理、房间 ticker 三处）；现无新房东时跳过这两类广播（快照改为等新玩家加入重新指派房东），宽限期淘汰与房间回收不受影响。
+- 颁奖阶段数据兜底（2026-09-22）：`race_result` 广播在背压时可能静默丢弃（unicast sink tryEmitNext），且前端原实现忽略消息内 ranking 只依赖 HTTP 刷新，颁奖窗口（数十秒）内请求失败会导致“本场结果”与领奖台空白；现前端收到 `race_result` 直接用消息内 ranking/totalPool/paidTotal/podiumEndAt 进入颁奖阶段（HTTP 轮询仍作后台校正），`/state` 响应新增 `myResult`（个人结算兜底恢复，弥补 `race_my_result` 定向消息丢失），room 层收到 `race_result` 同步刷新本地状态。
 
 ### 14.6 安全机制
 

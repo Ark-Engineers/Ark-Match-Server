@@ -10,6 +10,11 @@ public class SpineAssetDO {
     private String idleAnimation;
     private String moveAnimation;
     private Double displayScale;
+    private Integer raceCount;
+    private Integer firstPlaceCount;
+    private Integer secondPlaceCount;
+    private Integer thirdPlaceCount;
+    private Integer unplacedCount;
     private Long createdBy;
     private Long updatedBy;
     private LocalDateTime createdAt;
@@ -69,6 +74,46 @@ public class SpineAssetDO {
 
     public void setDisplayScale(Double displayScale) {
         this.displayScale = displayScale;
+    }
+
+    public Integer getRaceCount() {
+        return raceCount;
+    }
+
+    public void setRaceCount(Integer raceCount) {
+        this.raceCount = raceCount;
+    }
+
+    public Integer getFirstPlaceCount() {
+        return firstPlaceCount;
+    }
+
+    public void setFirstPlaceCount(Integer firstPlaceCount) {
+        this.firstPlaceCount = firstPlaceCount;
+    }
+
+    public Integer getSecondPlaceCount() {
+        return secondPlaceCount;
+    }
+
+    public void setSecondPlaceCount(Integer secondPlaceCount) {
+        this.secondPlaceCount = secondPlaceCount;
+    }
+
+    public Integer getThirdPlaceCount() {
+        return thirdPlaceCount;
+    }
+
+    public void setThirdPlaceCount(Integer thirdPlaceCount) {
+        this.thirdPlaceCount = thirdPlaceCount;
+    }
+
+    public Integer getUnplacedCount() {
+        return unplacedCount;
+    }
+
+    public void setUnplacedCount(Integer unplacedCount) {
+        this.unplacedCount = unplacedCount;
     }
 
     public Long getCreatedBy() {

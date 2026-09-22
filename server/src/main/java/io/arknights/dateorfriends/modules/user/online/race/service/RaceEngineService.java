@@ -170,7 +170,7 @@ public class RaceEngineService {
     ) {
     }
 
-    public record ParticipantInfo(long id, int sortNo, String assetKey, String name, int type, String idleAnimation, String moveAnimation, Double displayScale) {
+    public record ParticipantInfo(long id, int sortNo, String assetKey, String name, int type, String idleAnimation, String moveAnimation, Double displayScale, int raceCount, int firstPlaceCount, int secondPlaceCount, int thirdPlaceCount, int unplacedCount) {
     }
 
     public record RoundInfo(
@@ -197,6 +197,13 @@ public class RaceEngineService {
     public record MyBetInfo(long assetId, long amount) {
     }
 
+    /** 当前轮次个人结算信息（HTTP 可恢复，弥补 WS race_my_result 背压丢弃） */
+    public record WinInfo(long assetId, String participantName, int rankNo, long payout) {
+    }
+
+    public record MyResultInfo(long roundId, int roundNo, long payout, long betTotal, List<WinInfo> wins) {
+    }
+
     public record StateResponse(
             boolean exists,
             RaceBrief race,
@@ -204,13 +211,14 @@ public class RaceEngineService {
             List<ParticipantInfo> participants,
             List<MyBetInfo> myBets,
             long myTotal,
+            MyResultInfo myResult,
             long minTotalBet,
             long maxTotalBet,
             Map<Long, Long> horsePools,
             long serverTs
     ) {
         public static StateResponse missing() {
-            return new StateResponse(false, null, null, List.of(), List.of(), 0, MIN_TOTAL_BET, MAX_TOTAL_BET, Map.of(), System.currentTimeMillis());
+            return new StateResponse(false, null, null, List.of(), List.of(), 0, null, MIN_TOTAL_BET, MAX_TOTAL_BET, Map.of(), System.currentTimeMillis());
         }
     }
 
@@ -396,7 +404,12 @@ public class RaceEngineService {
                 a.getType() == null ? 2 : a.getType(),
                 idle,
                 move,
-                scale
+                scale,
+                a.getRaceCount() == null ? 0 : a.getRaceCount(),
+                a.getFirstPlaceCount() == null ? 0 : a.getFirstPlaceCount(),
+                a.getSecondPlaceCount() == null ? 0 : a.getSecondPlaceCount(),
+                a.getThirdPlaceCount() == null ? 0 : a.getThirdPlaceCount(),
+                a.getUnplacedCount() == null ? 0 : a.getUnplacedCount()
         );
     }
 
@@ -815,6 +828,7 @@ public class RaceEngineService {
         List<MyBetInfo> myBets = List.of();
         long myTotal = 0;
         Map<Long, Long> horsePools = Map.of();
+        MyResultInfo myResult = null;
         if (round != null) {
             roundInfo = toRoundInfo(round);
             var bets = betMapper.selectByRoundAndUser(round.getId(), userId);
@@ -830,6 +844,20 @@ public class RaceEngineService {
             for (var p : participants) {
                 horsePools.put(p.getId(), betMapper.sumPoolByRoundAndAsset(round.getId(), p.getId()));
             }
+            if (myTotal > 0 && ("PODIUM".equals(round.getStatus()) || "FINISHED".equals(round.getStatus()))) {
+                var settlements = settlementMapper.selectByRoundAndUser(round.getId(), userId);
+                var nameById = new LinkedHashMap<Long, String>();
+                for (var p : participants) nameById.put(p.getId(), p.getName());
+                long payout = settlements.stream().mapToLong(s -> s.getPayout() == null ? 0 : s.getPayout()).sum();
+                var wins = settlements.stream()
+                        .map(s -> new WinInfo(
+                                s.getAssetId() == null ? 0 : s.getAssetId(),
+                                nameById.getOrDefault(s.getAssetId(), ""),
+                                s.getRankNo() == null ? 0 : s.getRankNo(),
+                                s.getPayout() == null ? 0 : s.getPayout()))
+                        .toList();
+                myResult = new MyResultInfo(round.getId(), round.getRoundNo() == null ? 0 : round.getRoundNo(), payout, myTotal, wins);
+            }
         }
         return new StateResponse(
                 true,
@@ -838,6 +866,7 @@ public class RaceEngineService {
                 toParticipantInfos(participants),
                 myBets,
                 myTotal,
+                myResult,
                 MIN_TOTAL_BET,
                 MAX_TOTAL_BET,
                 horsePools,
@@ -968,7 +997,11 @@ public class RaceEngineService {
                         if (!now.isBefore(computeRaceStartAt(round).plusSeconds(round.getRaceDurationSeconds()))) settleRound(race, round, null);
                     }
                     case "PODIUM" -> {
-                        if (!now.isBefore(computePodiumEndAt(round))) finishRoundAndAdvance(race, round, null);
+                        var podiumEnd = computePodiumEndAt(round);
+                        if (!now.isBefore(podiumEnd)) {
+                            log.info("race tick: podium ended, advancing race={} round={} podiumEnd={}", race.getId(), round.getId(), podiumEnd);
+                            finishRoundAndAdvance(race, round, null);
+                        }
                     }
                     case "FINISHED" -> {
                         // 异常兜底：轮次已收尾但下一场未开启/模式未关闭（旧数据或迁移遗留），继续收尾流程
@@ -1157,6 +1190,16 @@ public class RaceEngineService {
             }
             var settledAt = nowLdt();
             podiumEndAt = settledAt.plusSeconds(locked.getPodiumDurationSeconds());
+            var sam = session.getMapper(SpineAssetMapper.class);
+            for (int i = 0; i < ranking.size(); i++) {
+                long assetId = ranking.get(i);
+                int first = i == 0 ? 1 : 0;
+                int second = i == 1 ? 1 : 0;
+                int third = i == 2 ? 1 : 0;
+                int unplaced = i >= 3 ? 1 : 0;
+                int affected = sam.incrementRaceStats(assetId, first, second, third, unplaced);
+                log.info("race stats increment round={} assetId={} rank={} affected={}", round.getId(), assetId, i + 1, affected);
+            }
             rm.markPodium(round.getId(), paid, settledAt);
             if (adminId != null) recordControl(session, race.getId(), round.getId(), adminId, "SETTLE_NOW", Map.of("paidTotal", paid));
             session.commit();
@@ -1254,21 +1297,26 @@ public class RaceEngineService {
             }
             rm.markFinished(round.getId());
             if (hasNextRound(active, locked)) {
-                var next = rm.selectByRaceAndRoundNo(race.getId(), locked.getRoundNo() + 1);
-                boolean insert = next == null;
-                if (insert) next = new RaceRoundDO();
-                next.setRaceId(race.getId());
-                next.setRoundNo(locked.getRoundNo() + 1);
-                next.setRacerIds(nextRacerIds(session, active, locked));
-                next.setStatus("BETTING");
-                next.setBetStartAt(nowLdt());
-                snapshotDurations(next, active);
-                if (insert) {
-                    rm.insert(next);
-                } else if (rm.resetEmptyPlaceholder(next) != 1) {
-                    throw new BusinessException(ErrorCode.RACE_PHASE_INVALID, "下一场占位轮次无法复用，请管理员检查场次数据");
-                } else {
-                    log.warn("race advance: reused stale placeholder round race={} round={}", race.getId(), next.getId());
+                try {
+                    var next = rm.selectByRaceAndRoundNo(race.getId(), locked.getRoundNo() + 1);
+                    boolean insert = next == null;
+                    if (insert) next = new RaceRoundDO();
+                    next.setRaceId(race.getId());
+                    next.setRoundNo(locked.getRoundNo() + 1);
+                    next.setRacerIds(nextRacerIds(session, active, locked));
+                    next.setStatus("BETTING");
+                    next.setBetStartAt(nowLdt());
+                    snapshotDurations(next, active);
+                    if (insert) {
+                        rm.insert(next);
+                    } else if (rm.resetEmptyPlaceholder(next) != 1) {
+                        throw new BusinessException(ErrorCode.RACE_PHASE_INVALID, "下一场占位轮次无法复用，请管理员检查场次数据");
+                    } else {
+                        log.warn("race advance: reused stale placeholder round race={} round={}", race.getId(), next.getId());
+                    }
+                } catch (Exception e) {
+                    log.error("race advance: failed to create next round, closing mode race={} round={}", race.getId(), locked.getId(), e);
+                    session.getMapper(RaceMapper.class).updateStatus(race.getId(), "CLOSED");
                 }
             } else {
                 session.getMapper(RaceMapper.class).updateStatus(race.getId(), "CLOSED");

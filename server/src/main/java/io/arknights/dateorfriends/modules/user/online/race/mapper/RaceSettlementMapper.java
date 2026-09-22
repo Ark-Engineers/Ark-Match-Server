@@ -23,6 +23,9 @@ public interface RaceSettlementMapper {
     @Select("SELECT * FROM horse_race_settlement WHERE round_id=#{roundId} ORDER BY rank_no, id")
     List<RaceSettlementDO> selectByRoundId(@Param("roundId") long roundId);
 
+    @Select("SELECT * FROM horse_race_settlement WHERE round_id=#{roundId} AND user_id=#{userId} ORDER BY rank_no, id")
+    List<RaceSettlementDO> selectByRoundAndUser(@Param("roundId") long roundId, @Param("userId") long userId);
+
     @Select("SELECT COALESCE(SUM(payout), 0) FROM horse_race_settlement WHERE round_id=#{roundId}")
     long sumPayoutByRound(@Param("roundId") long roundId);
 }

@@ -16,6 +16,12 @@ CREATE TABLE `spine_asset` (
   `name` VARCHAR(128) NULL COMMENT '展示名称（可为空）',
   `type` TINYINT NOT NULL DEFAULT 1 COMMENT '类型：1=人物，2=敌人，3=BOSS',
 
+  `race_count` INT NOT NULL DEFAULT 0 COMMENT '参赛总场次',
+  `first_place_count` INT NOT NULL DEFAULT 0 COMMENT '第一名次数',
+  `second_place_count` INT NOT NULL DEFAULT 0 COMMENT '第二名次数',
+  `third_place_count` INT NOT NULL DEFAULT 0 COMMENT '第三名次数',
+  `unplaced_count` INT NOT NULL DEFAULT 0 COMMENT '未获名次次数（第4-5名）',
+
   `created_by` BIGINT NOT NULL COMMENT '创建人ID（管理员 user.id）',
   `updated_by` BIGINT NOT NULL COMMENT '最后修改人ID（管理员 user.id）',
 
