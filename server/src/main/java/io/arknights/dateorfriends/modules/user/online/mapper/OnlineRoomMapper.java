@@ -103,6 +103,21 @@ public interface OnlineRoomMapper {
             """)
     int insertIgnore(OnlineRoomDO room);
 
+    @Select("""
+            SELECT COUNT(1)
+            FROM `online_room`
+            WHERE deleted = 0
+            """)
+    long countAll();
+
+    @Select("""
+            SELECT COUNT(1)
+            FROM `online_room`
+            WHERE deleted = 0
+              AND online = 1
+            """)
+    long countOnline();
+
     @Update("""
             UPDATE `online_room`
             SET online = #{online},

@@ -1,7 +1,9 @@
 package io.arknights.dateorfriends.tools.web;
 
 import io.netty.util.NetUtil;
+import java.net.InetSocketAddress;
 import java.util.regex.Pattern;
+import org.springframework.http.HttpHeaders;
 import org.springframework.web.server.ServerWebExchange;
 
 public final class IpUtils {
@@ -30,29 +32,32 @@ public final class IpUtils {
     }
 
     public static String resolveClientIp(ServerWebExchange exchange) {
-        var xff = exchange.getRequest().getHeaders().getFirst("X-Forwarded-For");
+        return resolveClientIp(exchange.getRequest().getHeaders(), exchange.getRequest().getRemoteAddress());
+    }
+
+    public static String resolveClientIp(HttpHeaders headers, InetSocketAddress remoteAddress) {
+        var xff = headers.getFirst("X-Forwarded-For");
         var ipFromXff = firstIpFromXff(xff);
         if (ipFromXff != null) {
             return ipFromXff;
         }
 
-        var xri = exchange.getRequest().getHeaders().getFirst("X-Real-IP");
+        var xri = headers.getFirst("X-Real-IP");
         var ipFromXri = normalizeIp(xri);
         if (ipFromXri != null) {
             return ipFromXri;
         }
 
-        var forwarded = exchange.getRequest().getHeaders().getFirst("Forwarded");
+        var forwarded = headers.getFirst("Forwarded");
         var ipFromForwarded = firstIpFromForwarded(forwarded);
         if (ipFromForwarded != null) {
             return ipFromForwarded;
         }
 
-        var addr = exchange.getRequest().getRemoteAddress();
-        if (addr == null || addr.getAddress() == null) {
+        if (remoteAddress == null || remoteAddress.getAddress() == null) {
             return "unknown";
         }
-        return addr.getAddress().getHostAddress();
+        return remoteAddress.getAddress().getHostAddress();
     }
 
     private static String firstIpFromXff(String xff) {

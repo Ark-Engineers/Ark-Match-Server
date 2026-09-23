@@ -281,6 +281,21 @@ public interface NoticeMapper {
     NoticeDO selectUserDetail(@Param("id") long id, @Param("now") LocalDateTime now);
 
     @Select("""
+            SELECT COUNT(1)
+            FROM `notice`
+            WHERE deleted = 0
+            """)
+    long countAll();
+
+    @Select("""
+            SELECT COUNT(1)
+            FROM `notice`
+            WHERE deleted = 0
+              AND status = 'PUBLISHED'
+            """)
+    long countPublished();
+
+    @Select("""
             SELECT
               n.id,
               n.title,

@@ -6,6 +6,7 @@ import io.arknights.dateorfriends.modules.user.lmd.service.LmdWalletService;
 import io.arknights.dateorfriends.modules.user.profile.controller.UserProfileController.UpdateProfileRequest;
 import io.arknights.dateorfriends.modules.user.profile.mapper.UserProfileDO;
 import io.arknights.dateorfriends.modules.user.profile.mapper.UserProfileMapper;
+import io.arknights.dateorfriends.tools.profanity.ProfanityFilter;
 import io.arknights.dateorfriends.tools.web.BusinessException;
 import io.arknights.dateorfriends.tools.web.ErrorCode;
 import io.arknights.dateorfriends.tools.web.IpUtils;
@@ -26,6 +27,7 @@ public class UserProfileService {
     private final GeoIpService geoIpService;
     private final ContactAesService contactAesService;
     private final LmdWalletService lmdWalletService;
+    private final ProfanityFilter profanityFilter;
 
     public UserProfileService(
             UserMapper userMapper,
@@ -33,7 +35,8 @@ public class UserProfileService {
             UserProfileMapper userProfileMapper,
             GeoIpService geoIpService,
             ContactAesService contactAesService,
-            LmdWalletService lmdWalletService
+            LmdWalletService lmdWalletService,
+            ProfanityFilter profanityFilter
     ) {
         this.userMapper = userMapper;
         this.actionLogMapper = actionLogMapper;
@@ -41,6 +44,7 @@ public class UserProfileService {
         this.geoIpService = geoIpService;
         this.contactAesService = contactAesService;
         this.lmdWalletService = lmdWalletService;
+        this.profanityFilter = profanityFilter;
     }
 
     public record ProfileResponse(
@@ -53,6 +57,7 @@ public class UserProfileService {
             String avatarCharName,
             String featuredRole,
             String signature,
+            String gender,
             String region,
             Integer age,
             String birthday,
@@ -105,7 +110,9 @@ public class UserProfileService {
 
                     if (req.featuredRole() != null) profile.setFeaturedRole(trimToNull(req.featuredRole()));
 
-                    if (req.signature() != null) profile.setSignature(trimToNull(req.signature()));
+                    if (req.signature() != null) profile.setSignature(profanityFilter.filter(trimToNull(req.signature())));
+
+                    if (req.gender() != null) profile.setGender(normalizeGender(req.gender()));
 
                     var birthday = parseDate(req.birthday());
                     if (req.birthday() != null) profile.setBirthday(birthday);
@@ -166,7 +173,8 @@ public class UserProfileService {
             long lmdBalance
     ) {
         var featuredRole = profile == null ? null : profile.getFeaturedRole();
-        var signature = profile == null ? null : profile.getSignature();
+        var signature = profile == null ? null : profanityFilter.filter(profile.getSignature());
+        var gender = profile == null ? null : profile.getGender();
         var birthdayVisible = profile != null && profile.getBirthdayVisible() != null && profile.getBirthdayVisible() == 1;
         var birthday = profile == null ? null : profile.getBirthday();
         var tags = parseTags(profile == null ? null : profile.getTagsJson());
@@ -180,17 +188,19 @@ public class UserProfileService {
         var wechat = isOwner && profile != null ? contactAesService.decryptFromBase64(profile.getWechatEnc()) : null;
         var email = isOwner && profile != null ? contactAesService.decryptFromBase64(profile.getEmailEnc()) : null;
         var loginEmail = isOwner ? user.getEmail() : null;
+        var nickname = profanityFilter.filter(user.getNickname());
 
         return new ProfileResponse(
                 user.getId(),
                 user.getAccount(),
-                user.getNickname(),
+                nickname,
                 loginEmail,
                 user.getAvatarUrl(),
                 user.getAvatarCharId(),
                 user.getAvatarCharName(),
                 featuredRole,
                 signature,
+                gender,
                 region,
                 age,
                 birthdayText,
@@ -225,6 +235,16 @@ public class UserProfileService {
         if (v == null) return null;
         var s = v.trim();
         return s.isBlank() ? null : s;
+    }
+
+    private String normalizeGender(String v) {
+        if (v == null) return null;
+        var s = v.trim().toUpperCase();
+        if (s.isBlank()) return null;
+        return switch (s) {
+            case "MALE", "FEMALE" -> s;
+            default -> throw new BusinessException(ErrorCode.PARAM_INVALID, "性别选项不正确");
+        };
     }
 
     private LocalDate parseDate(String v) {

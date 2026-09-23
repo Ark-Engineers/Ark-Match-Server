@@ -145,6 +145,57 @@ java -jar server/target/server-0.0.1-SNAPSHOT.jar --server.port=0
 - 备注：仅 ADMIN 可访问；用于权限变更/风控场景下的全端强制下线
 - Header：`Authorization: Bearer <adminAccessToken>`
 
+#### 发送重置密码邮箱验证码
+
+- `POST /auth/reset-password/email-code/send`
+- 备注：向指定邮箱发送 6 位重置密码验证码（有效期 15 分钟，同一邮箱每小时最多 5 次，同一 IP 每分钟最多 5 次）
+- Body：
+
+```json
+{
+  "email": "user@example.com"
+}
+```
+
+- Response（`code=0` 表示成功）：
+
+```json
+{
+  "code": 0,
+  "message": "ok",
+  "data": null
+}
+```
+
+#### 重置密码
+
+- `POST /auth/reset-password`
+- 备注：通过邮箱验证码重置密码，成功后该用户所有令牌立即失效（令牌版本号 +1）
+- Body：
+
+```json
+{
+  "email": "user@example.com",
+  "emailCode": "123456",
+  "newPassword": "newPassword123"
+}
+```
+
+- Response（`code=0` 表示成功）：
+
+```json
+{
+  "code": 0,
+  "message": "ok",
+  "data": null
+}
+```
+
+- 说明：
+  - 验证码最多尝试 3 次，超过后自动作废
+  - 新密码长度 8-64 位
+  - 成功后旧密码和所有已登录会话均失效，需重新登录
+
 ### 5.2 业务示例接口（需要登录）
 
 - Admin：

@@ -80,6 +80,8 @@ public class AuthWebFilter implements WebFilter {
                 || "/auth/register/email-code/send".equals(path)
                 || "/auth/login/email-code/send".equals(path)
                 || "/auth/login/email-code/verify".equals(path)
+                || "/auth/reset-password/email-code/send".equals(path)
+                || "/auth/reset-password".equals(path)
                 || "/auth/dev/email-code/test".equals(path)
                 || "/auth/dev/captcha/check".equals(path)
                 || "/auth/dev/token".equals(path)

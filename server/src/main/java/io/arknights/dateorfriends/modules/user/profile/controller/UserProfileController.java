@@ -31,6 +31,7 @@ public class UserProfileController {
     public record UpdateProfileRequest(
             String featuredRole,
             String signature,
+            String gender,
             String birthday,
             Boolean birthdayVisible,
             @Size(max = 3) List<String> tags,

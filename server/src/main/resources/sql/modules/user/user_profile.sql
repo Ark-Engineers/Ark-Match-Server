@@ -11,6 +11,8 @@ CREATE TABLE `user_profile` (
   `featured_role` VARCHAR(32) NULL COMMENT '主推角色（仅允许1个）',
   `signature` VARCHAR(255) NULL COMMENT '个性签名',
 
+  `gender` VARCHAR(10) NULL COMMENT '性别：MALE/FEMALE；NULL=未设置',
+
   `region_ip` VARCHAR(45) NULL COMMENT '地区来源IP（仅存IP；展示需解析到省市）',
 
   `birthday` DATE NULL COMMENT '生日（年月日）',

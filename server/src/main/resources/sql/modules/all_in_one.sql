@@ -213,6 +213,8 @@ CREATE TABLE `user_profile` (
   `featured_role` VARCHAR(32) NULL COMMENT '主推角色（仅允许1个）',
   `signature` VARCHAR(255) NULL COMMENT '个性签名',
 
+  `gender` VARCHAR(10) NULL COMMENT '性别：MALE/FEMALE；NULL=未设置',
+
   `region_ip` VARCHAR(45) NULL COMMENT '地区来源IP（仅存IP；展示需解析到省市）',
 
   `birthday` DATE NULL COMMENT '生日（年月日）',
@@ -365,6 +367,9 @@ CREATE TABLE `questionnaire_question` (
   `trigger_option` VARCHAR(255) NULL COMMENT '触发子问题选项（子问题使用；存父问题选项值）',
 
   `weight` DECIMAL(6,2) NOT NULL COMMENT '权重（最多2位小数；总和=100）',
+
+  `is_suitable` TINYINT(1) NOT NULL DEFAULT 0 COMMENT '合适状态：0 否；1 是',
+  `is_excluded` TINYINT(1) NOT NULL DEFAULT 0 COMMENT '排除状态：0 否；1 是',
 
   `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
   `updated_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',

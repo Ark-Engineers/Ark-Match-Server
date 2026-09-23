@@ -1,15 +1,18 @@
 package io.arknights.dateorfriends.modules.user.online.ws;
 
+import io.arknights.dateorfriends.modules.user.online.service.OnlineChatService;
 import io.arknights.dateorfriends.modules.user.online.service.OnlineRoomService;
 import io.arknights.dateorfriends.tools.jwt.JwtPrincipal;
 import io.arknights.dateorfriends.tools.jwt.JwtService;
 import io.arknights.dateorfriends.tools.security.token.RedisTokenStore;
+import io.arknights.dateorfriends.tools.web.IpUtils;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.HexFormat;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -38,6 +41,7 @@ public class OnlineWebSocketHandlerV2 implements WebSocketHandler {
     private final JwtService jwtService;
     private final RedisTokenStore tokenStore;
     private final OnlineRoomService onlineRoomService;
+    private final OnlineChatService chatService;
     private final JsonParser jsonParser = JsonParserFactory.getJsonParser();
 
     private static final int WORLD_W = 1920;
@@ -52,10 +56,11 @@ public class OnlineWebSocketHandlerV2 implements WebSocketHandler {
     private final Map<String, Room> rooms = new ConcurrentHashMap<>();
     private final Map<String, RoomMeta> roomMetas = new ConcurrentHashMap<>();
 
-    public OnlineWebSocketHandlerV2(JwtService jwtService, RedisTokenStore tokenStore, OnlineRoomService onlineRoomService) {
+    public OnlineWebSocketHandlerV2(JwtService jwtService, RedisTokenStore tokenStore, OnlineRoomService onlineRoomService, OnlineChatService chatService) {
         this.jwtService = jwtService;
         this.tokenStore = tokenStore;
         this.onlineRoomService = onlineRoomService;
+        this.chatService = chatService;
         var now = System.currentTimeMillis();
         var lobby = new RoomMeta("lobby", "大厅", true, "PUBLIC", 0, null, ConcurrentHashMap.newKeySet(), 0L, now, now);
         roomMetas.put(lobby.roomId, lobby);
@@ -99,10 +104,12 @@ public class OnlineWebSocketHandlerV2 implements WebSocketHandler {
         if (token == null || token.isBlank()) {
             return session.close(CloseStatus.POLICY_VIOLATION);
         }
+        var handshakeInfo = session.getHandshakeInfo();
+        var clientIp = IpUtils.resolveClientIp(handshakeInfo.getHeaders(), handshakeInfo.getRemoteAddress());
         return validateAccessToken(jwtService, tokenStore, token)
                 .flatMap(principal -> {
                     var sink = Sinks.many().unicast().<String>onBackpressureBuffer();
-                    var ctx = new ConnCtx(session, sink, principal);
+                    var ctx = new ConnCtx(session, sink, principal, clientIp);
                     var send = session.send(sink.asFlux().map(session::textMessage));
                     var receive = session.receive()
                             .map(WebSocketMessage::getPayloadAsText)
@@ -236,6 +243,29 @@ public class OnlineWebSocketHandlerV2 implements WebSocketHandler {
             if (targetId.isBlank() || emote.isBlank()) return Mono.empty();
             if (emote.length() > 32) emote = emote.substring(0, 32);
             room.broadcastAll(toJson(Map.of("type", "emote", "clientId", targetId, "emote", emote)));
+            return Mono.empty();
+        }
+        if ("chat".equals(type)) {
+            var roomId = ctx.roomId;
+            if (roomId == null) return Mono.empty();
+            var room = rooms.get(roomId);
+            if (room == null) return Mono.empty();
+            if (ctx.slot == null || ctx.slot.state == null) return Mono.empty();
+            var rawContent = String.valueOf(msg.getOrDefault("content", "")).trim();
+            if (rawContent.isEmpty()) return Mono.empty();
+            if (rawContent.length() > 500) rawContent = rawContent.substring(0, 500);
+            var filtered = chatService.filter(rawContent);
+            var nickname = chatService.filter(ctx.slot.state.nickname);
+            var payload = new LinkedHashMap<String, Object>();
+            payload.put("type", "chat");
+            payload.put("clientId", ctx.slot.state.clientId);
+            payload.put("userId", ctx.slot.state.userId);
+            payload.put("nickname", nickname);
+            payload.put("content", filtered);
+            payload.put("ts", System.currentTimeMillis());
+            var json = toJson(payload);
+            room.broadcastAll(json);
+            chatService.saveChatMessage(roomId, ctx.slot.state.userId, nickname, filtered, ctx.clientIp);
             return Mono.empty();
         }
         return Mono.empty();
@@ -413,6 +443,8 @@ public class OnlineWebSocketHandlerV2 implements WebSocketHandler {
             return;
         }
         room.startTicker();
+
+        nickname = chatService.filter(nickname);
 
         PlayerSlot slot = null;
         var resumed = false;
@@ -808,14 +840,16 @@ public class OnlineWebSocketHandlerV2 implements WebSocketHandler {
         private final WebSocketSession session;
         private final Sinks.Many<String> sink;
         private final JwtPrincipal principal;
+        private final String clientIp;
         private volatile String roomId;
         private volatile String clientId;
         private volatile PlayerSlot slot;
 
-        private ConnCtx(WebSocketSession session, Sinks.Many<String> sink, JwtPrincipal principal) {
+        private ConnCtx(WebSocketSession session, Sinks.Many<String> sink, JwtPrincipal principal, String clientIp) {
             this.session = session;
             this.sink = sink;
             this.principal = principal;
+            this.clientIp = clientIp;
         }
     }
 }

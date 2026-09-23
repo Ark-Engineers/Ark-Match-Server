@@ -20,4 +20,6 @@ public interface AuthService {
     Mono<Void> logout(JwtPrincipal principal, String accessToken, String refreshToken);
 
     Mono<Void> logoutAll(long userId);
+
+    Mono<Void> resetPassword(String email, String newPassword);
 }

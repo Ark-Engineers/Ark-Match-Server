@@ -66,7 +66,7 @@ public class AuthDevController {
 
     public record TestIssueEmailCodeRequest(
             @NotBlank @Email String email,
-            @NotBlank @Pattern(regexp = "^(register|login)$") String purpose
+            @NotBlank @Pattern(regexp = "^(register|login|reset_password|change_password|change_email)$") String purpose
     ) {
     }
 

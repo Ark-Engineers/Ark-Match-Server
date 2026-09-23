@@ -294,6 +294,19 @@ public interface BanRecordMapper {
     );
 
     @Select("""
+            SELECT COUNT(1)
+            FROM `ban_record`
+            WHERE status = 'ACTIVE'
+            """)
+    long countActive();
+
+    @Select("""
+            SELECT COUNT(1)
+            FROM `ban_record`
+            """)
+    long countTotal();
+
+    @Select("""
             <script>
             SELECT
               id,

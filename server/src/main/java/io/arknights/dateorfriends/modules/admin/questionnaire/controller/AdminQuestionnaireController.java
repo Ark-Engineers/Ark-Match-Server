@@ -60,7 +60,9 @@ public class AdminQuestionnaireController {
             String options,
             Integer parentSeq,
             String triggerOption,
-            String weight
+            String weight,
+            Integer isSuitable,
+            Integer isExcluded
     ) {
     }
 
@@ -131,7 +133,9 @@ public class AdminQuestionnaireController {
                                 q.options(),
                                 q.parentSeq(),
                                 q.triggerOption(),
-                                q.weight() == null ? null : q.weight().toPlainString()
+                                q.weight() == null ? null : q.weight().toPlainString(),
+                                q.isSuitable(),
+                                q.isExcluded()
                         )).toList()
                 ))
                 .map(ApiResponse::ok);
@@ -190,7 +194,9 @@ public class AdminQuestionnaireController {
                                 q.options(),
                                 q.parentSeq(),
                                 q.triggerOption(),
-                                q.weight() == null ? null : q.weight().toPlainString()
+                                q.weight() == null ? null : q.weight().toPlainString(),
+                                q.isSuitable(),
+                                q.isExcluded()
                         )).toList()
                 ))
                 .map(ApiResponse::ok);
@@ -209,7 +215,9 @@ public class AdminQuestionnaireController {
                         q.options(),
                         q.parentSeq(),
                         q.triggerOption(),
-                        parseDecimal(q.weight())
+                        parseDecimal(q.weight()),
+                        q.isSuitable(),
+                        q.isExcluded()
                 ))
                 .toList();
 
@@ -226,7 +234,9 @@ public class AdminQuestionnaireController {
                                 q.options(),
                                 q.parentSeq(),
                                 q.triggerOption(),
-                                q.weight() == null ? null : q.weight().toPlainString()
+                                q.weight() == null ? null : q.weight().toPlainString(),
+                                q.isSuitable(),
+                                q.isExcluded()
                         )).toList()
                 ))
                 .map(ApiResponse::ok);

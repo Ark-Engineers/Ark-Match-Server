@@ -9,6 +9,7 @@ public class UserProfileDO {
     private Long userId;
     private String featuredRole;
     private String signature;
+    private String gender;
     private String regionIp;
     private LocalDate birthday;
     private Integer birthdayVisible;

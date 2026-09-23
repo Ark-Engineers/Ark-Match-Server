@@ -9,6 +9,7 @@ import io.arknights.dateorfriends.tools.security.token.RedisTokenStore;
 import io.arknights.dateorfriends.tools.verify.EmailCodeService;
 import io.arknights.dateorfriends.tools.web.BusinessException;
 import io.arknights.dateorfriends.tools.web.ErrorCode;
+import java.security.SecureRandom;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.stereotype.Service;
 import reactor.core.publisher.Mono;
@@ -23,6 +24,7 @@ public class UserSecurityService {
     private final BCryptPasswordEncoder passwordEncoder;
     private final RedisTokenStore tokenStore;
     private final BanService banService;
+    private final SecureRandom random = new SecureRandom();
 
     public UserSecurityService(
             UserMapper userMapper,
@@ -40,12 +42,21 @@ public class UserSecurityService {
         this.banService = banService;
     }
 
-    public Mono<Void> updateNickname(JwtPrincipal principal, String nicknameRaw, String ip) {
+    public Mono<Void> updateNickname(JwtPrincipal principal, String baseNameRaw, String ip) {
         assertNotSuperAdmin(principal);
-        var nickname = nicknameRaw == null ? "" : nicknameRaw.trim();
-        if (nickname.isBlank() || nickname.length() > 64) {
-            return Mono.error(new BusinessException(ErrorCode.PARAM_INVALID, "昵称不能为空且长度不能超过64"));
+        var baseName = baseNameRaw == null ? "" : baseNameRaw.trim();
+        if (baseName.isBlank()) {
+            return Mono.error(new BusinessException(ErrorCode.PARAM_INVALID, "昵称不能为空"));
         }
+        if (baseName.contains("#")) {
+            return Mono.error(new BusinessException(ErrorCode.PARAM_INVALID, "昵称不能包含#号"));
+        }
+        var maxBase = 64 - 1 - 4;
+        if (baseName.length() > maxBase) {
+            return Mono.error(new BusinessException(ErrorCode.PARAM_INVALID, "昵称长度不能超过" + maxBase));
+        }
+        var suffix = "%04d".formatted(random.nextInt(10_000));
+        var nickname = baseName + "#" + suffix;
         return Mono.fromCallable(() -> {
                     var user = userMapper.selectById(principal.userId());
                     if (user == null) throw new BusinessException(ErrorCode.UNAUTHORIZED);

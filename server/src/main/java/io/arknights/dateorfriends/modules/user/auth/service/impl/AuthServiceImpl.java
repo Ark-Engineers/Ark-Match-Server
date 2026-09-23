@@ -229,6 +229,21 @@ public class AuthServiceImpl implements AuthService {
                 .then();
     }
 
+    @Override
+    public Mono<Void> resetPassword(String email, String newPassword) {
+        return Mono.fromCallable(() -> userMapper.selectByEmail(email))
+                .subscribeOn(Schedulers.boundedElastic())
+                .switchIfEmpty(Mono.error(new BusinessException(ErrorCode.USER_NOT_FOUND)))
+                .flatMap(user -> {
+                    var hash = passwordEncoder.encode(newPassword);
+                    return Mono.fromRunnable(() -> userMapper.updatePasswordHash(user.getId(), hash))
+                            .subscribeOn(Schedulers.boundedElastic())
+                            .then(tokenStore.bumpTokenVersion(user.getId()))
+                            .then(tokenStore.revokeAllRefreshTokens(user.getId()))
+                            .then(insertActionLog(user.getId(), "unknown", "/auth/reset-password"));
+                });
+    }
+
     private Mono<UserDO> findUserByAccountOrEmail(String accountOrEmail) {
         return Mono.fromCallable(() -> {
                     if (isEmail(accountOrEmail)) {

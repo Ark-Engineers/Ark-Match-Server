@@ -151,6 +151,33 @@ public class AuthController {
                 .map(ApiResponse::ok);
     }
 
+    public record SendResetPasswordEmailCodeRequest(
+            @NotBlank @Email String email
+    ) {
+    }
+
+    @PostMapping("/reset-password/email-code/send")
+    public Mono<ApiResponse<Void>> sendResetPasswordEmailCode(@Valid @RequestBody SendResetPasswordEmailCodeRequest req, ServerWebExchange exchange) {
+        var ip = IpUtils.resolveClientIp(exchange);
+        return emailCodeService.sendResetPasswordCode(req.email(), ip)
+                .thenReturn(ApiResponse.ok(null));
+    }
+
+    public record ResetPasswordRequest(
+            @NotBlank @Email String email,
+            @NotBlank @Size(min = 6, max = 6) String emailCode,
+            @NotBlank @Size(min = 8, max = 64) String newPassword
+    ) {
+    }
+
+    @PostMapping("/reset-password")
+    public Mono<ApiResponse<Void>> resetPassword(@Valid @RequestBody ResetPasswordRequest req, ServerWebExchange exchange) {
+        var ip = IpUtils.resolveClientIp(exchange);
+        return emailCodeService.verifyResetPasswordCode(req.email(), req.emailCode(), ip)
+                .then(authService.resetPassword(req.email(), req.newPassword()))
+                .map(ApiResponse::ok);
+    }
+
     /**
      * 刷新令牌入口（仅 Refresh Token 可用）。
      * 每次刷新都会签发新的 Access/Refresh，并作废旧 Refresh（Redis 立即失效 + 黑名单）。

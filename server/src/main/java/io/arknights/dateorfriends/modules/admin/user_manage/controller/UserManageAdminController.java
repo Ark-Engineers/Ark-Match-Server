@@ -10,6 +10,7 @@ import io.arknights.dateorfriends.modules.user.auth.mapper.UserMapper;
 import io.arknights.dateorfriends.modules.user.lmd.mapper.UserWalletMapper;
 import io.arknights.dateorfriends.modules.user.notification.service.SiteNotificationService;
 import io.arknights.dateorfriends.tools.jwt.JwtPrincipal;
+import io.arknights.dateorfriends.tools.mail.MailService;
 import io.arknights.dateorfriends.tools.security.AuthWebFilter;
 import io.arknights.dateorfriends.tools.security.Role;
 import io.arknights.dateorfriends.tools.security.ban.BanService;
@@ -53,6 +54,7 @@ public class UserManageAdminController {
     private final UserManageOperationLogMapper userManageOperationLogMapper;
     private final SiteNotificationService notificationService;
     private final UserWalletMapper walletMapper;
+    private final MailService mailService;
 
     public UserManageAdminController(
             UserMapper userMapper,
@@ -63,7 +65,8 @@ public class UserManageAdminController {
             AdminRoleOperationLogMapper adminRoleOperationLogMapper,
             UserManageOperationLogMapper userManageOperationLogMapper,
             SiteNotificationService notificationService,
-            UserWalletMapper walletMapper
+            UserWalletMapper walletMapper,
+            MailService mailService
     ) {
         this.userMapper = userMapper;
         this.passwordEncoder = passwordEncoder;
@@ -74,6 +77,7 @@ public class UserManageAdminController {
         this.userManageOperationLogMapper = userManageOperationLogMapper;
         this.notificationService = notificationService;
         this.walletMapper = walletMapper;
+        this.mailService = mailService;
     }
 
     public record PageResponse<T>(long total, int page, int size, List<T> items) {
@@ -293,12 +297,25 @@ public class UserManageAdminController {
                             .subscribeOn(Schedulers.boundedElastic())
                             .flatMap(rows -> {
                                 if (rows <= 0) return Mono.error(new BusinessException(ErrorCode.OP_FAILED));
-                                return tokenAdminService.revokeAll(user.getId())
-                                        .then(insertUserManageLog(principal, user.getId(), "RESET_PASSWORD", ip, "RESET_PASSWORD", null))
-                                        .then(notificationService.sendToUser(principal.userId(), user.getId(), "SECURITY", "登录密码已重置",
-                                                buildResetPasswordNotifyContent(tempPassword, req.reason()),
-                                                "IMPORTANT", null, null))
-                                        .thenReturn(ApiResponse.ok(new ResetPasswordResponse(tempPassword)));
+                                return Mono.fromCallable(() -> userMapper.selectById(principal.userId()))
+                                        .subscribeOn(Schedulers.boundedElastic())
+                                        .defaultIfEmpty(null)
+                                        .flatMap(adminUser -> {
+                                            var adminName = adminUser != null && adminUser.getNickname() != null
+                                                    ? adminUser.getNickname() : ("管理员#" + principal.userId());
+                                            var emailMono = user.getEmail() != null && !user.getEmail().isBlank()
+                                                    ? mailService.sendTextWithRetry(user.getEmail(), "密码重置通知",
+                                                            buildResetPasswordEmailContent(tempPassword, adminName, req.reason()))
+                                                    .onErrorResume(err -> Mono.empty())
+                                                    : Mono.empty();
+                                            return tokenAdminService.revokeAll(user.getId())
+                                                    .then(insertUserManageLog(principal, user.getId(), "RESET_PASSWORD", ip, "RESET_PASSWORD", null))
+                                                    .then(emailMono)
+                                                    .then(notificationService.sendToUser(principal.userId(), user.getId(), "SECURITY", "登录密码已重置",
+                                                            buildResetPasswordNotifyContent(tempPassword, adminName, req.reason()),
+                                                            "IMPORTANT", null, null))
+                                                    .thenReturn(ApiResponse.ok(new ResetPasswordResponse(tempPassword)));
+                                        });
                             });
                 });
     }
@@ -752,14 +769,27 @@ public class UserManageAdminController {
         return sb.toString();
     }
 
-    private static String buildResetPasswordNotifyContent(String tempPassword, String reason) {
+    private static String buildResetPasswordNotifyContent(String tempPassword, String adminName, String reason) {
         var sb = new StringBuilder();
-        sb.append("你的登录密码已被超级管理员重置。");
+        sb.append("你的登录密码已被管理员（").append(adminName).append("）重置。");
         sb.append("\n临时密码：").append(tempPassword);
         sb.append("\n请尽快登录后修改密码。");
         if (reason != null && !reason.isBlank()) {
             sb.append("\n原因：").append(reason.trim());
         }
+        return sb.toString();
+    }
+
+    private static String buildResetPasswordEmailContent(String tempPassword, String adminName, String reason) {
+        var sb = new StringBuilder();
+        sb.append("你好，\n\n");
+        sb.append("你的登录密码已被管理员（").append(adminName).append("）重置。\n\n");
+        sb.append("临时密码：").append(tempPassword).append("\n\n");
+        sb.append("请尽快登录后修改密码。\n");
+        if (reason != null && !reason.isBlank()) {
+            sb.append("原因：").append(reason.trim()).append("\n");
+        }
+        sb.append("\n此邮件由系统自动发送，请勿回复。");
         return sb.toString();
     }
 

@@ -15,6 +15,8 @@ public class QuestionnaireQuestionDO {
     private Integer parentSeq;
     private String triggerOption;
     private BigDecimal weight;
+    private Integer isSuitable;
+    private Integer isExcluded;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
 }

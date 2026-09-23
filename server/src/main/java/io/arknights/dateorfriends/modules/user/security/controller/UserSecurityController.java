@@ -28,7 +28,7 @@ public class UserSecurityController {
         this.userSecurityService = userSecurityService;
     }
 
-    public record UpdateNicknameRequest(@NotBlank @Size(max = 64) String nickname) {
+    public record UpdateNicknameRequest(@NotBlank @Size(max = 59) String nickname) {
     }
 
     @PostMapping("/nickname")

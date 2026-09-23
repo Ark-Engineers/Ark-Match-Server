@@ -45,6 +45,9 @@ CREATE TABLE `questionnaire_question` (
 
   `weight` DECIMAL(6,2) NOT NULL COMMENT '权重（最多2位小数；总和=100）',
 
+  `is_suitable` TINYINT(1) NOT NULL DEFAULT 0 COMMENT '合适状态：0 否；1 是',
+  `is_excluded` TINYINT(1) NOT NULL DEFAULT 0 COMMENT '排除状态：0 否；1 是',
+
   `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
   `updated_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
 

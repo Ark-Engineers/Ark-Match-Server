@@ -90,6 +90,17 @@ public class EmailCodeService {
         return verifyCode("change_email", email, code, ip, CHANGE_MAX_ATTEMPTS);
     }
 
+    private static final Duration RESET_CODE_TTL = Duration.ofMinutes(15);
+    private static final int RESET_MAX_ATTEMPTS = 3;
+
+    public Mono<Void> sendResetPasswordCode(String email, String ip) {
+        return sendCode("reset_password", email, ip, "密码重置验证码", "你的密码重置验证码为：%s\n有效期：15分钟\n如非本人操作请忽略。", RESET_CODE_TTL, RESET_MAX_ATTEMPTS);
+    }
+
+    public Mono<Void> verifyResetPasswordCode(String email, String code, String ip) {
+        return verifyCode("reset_password", email, code, ip, RESET_MAX_ATTEMPTS);
+    }
+
     public record TestEmailCodeResponse(String code, long expiresInSeconds, long cooldownSeconds) {
     }
 

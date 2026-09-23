@@ -26,7 +26,9 @@ public interface QuestionnaireQuestionMapper {
               options_text,
               parent_seq,
               trigger_option,
-              weight
+              weight,
+              is_suitable,
+              is_excluded
             )
             VALUES
             <foreach collection="items" item="i" separator=",">
@@ -38,7 +40,9 @@ public interface QuestionnaireQuestionMapper {
                 #{i.optionsText},
                 #{i.parentSeq},
                 #{i.triggerOption},
-                #{i.weight}
+                #{i.weight},
+                #{i.isSuitable},
+                #{i.isExcluded}
               )
             </foreach>
             </script>
@@ -56,6 +60,8 @@ public interface QuestionnaireQuestionMapper {
               parent_seq AS parentSeq,
               trigger_option AS triggerOption,
               weight,
+              is_suitable AS isSuitable,
+              is_excluded AS isExcluded,
               created_at AS createdAt,
               updated_at AS updatedAt
             FROM `questionnaire_question`

@@ -1,11 +1,14 @@
 package io.arknights.dateorfriends.modules.admin.online.controller;
 
+import io.arknights.dateorfriends.modules.user.online.service.OnlineRoomService;
 import io.arknights.dateorfriends.modules.user.online.ws.OnlineWebSocketHandlerV2;
 import io.arknights.dateorfriends.tools.jwt.JwtPrincipal;
 import io.arknights.dateorfriends.tools.security.AuthWebFilter;
 import io.arknights.dateorfriends.tools.web.ApiResponse;
 import io.arknights.dateorfriends.tools.web.BusinessException;
 import io.arknights.dateorfriends.tools.web.ErrorCode;
+import java.util.List;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -19,9 +22,47 @@ import reactor.core.publisher.Mono;
 public class AdminOnlineRoomController {
 
     private final OnlineWebSocketHandlerV2 onlineWebSocketHandlerV2;
+    private final OnlineRoomService onlineRoomService;
 
-    public AdminOnlineRoomController(OnlineWebSocketHandlerV2 onlineWebSocketHandlerV2) {
+    public AdminOnlineRoomController(OnlineWebSocketHandlerV2 onlineWebSocketHandlerV2, OnlineRoomService onlineRoomService) {
         this.onlineWebSocketHandlerV2 = onlineWebSocketHandlerV2;
+        this.onlineRoomService = onlineRoomService;
+    }
+
+    public record AdminRoomInfo(
+            String roomId,
+            String name,
+            boolean online,
+            String permission,
+            int capacity,
+            long creatorUserId,
+            long createdAt,
+            long updatedAt
+    ) {
+    }
+
+    @GetMapping
+    public Mono<ApiResponse<List<AdminRoomInfo>>> list(ServerWebExchange exchange) {
+        var principal = exchange.<JwtPrincipal>getAttribute(AuthWebFilter.ATTR_PRINCIPAL);
+        if (principal == null) return Mono.error(new BusinessException(ErrorCode.UNAUTHORIZED));
+        var role = String.valueOf(principal.role() == null ? "" : principal.role()).toUpperCase();
+        if (!"ADMIN".equals(role) && !"SUPER_ADMIN".equals(role)) return Mono.error(new BusinessException(ErrorCode.FORBIDDEN));
+        return onlineRoomService.loadAllMetas()
+                .map(metas -> {
+                    var list = metas.stream()
+                            .map(m -> new AdminRoomInfo(
+                                    m.roomId(),
+                                    m.name(),
+                                    m.online(),
+                                    m.permission(),
+                                    m.capacity(),
+                                    m.creatorUserId(),
+                                    m.createdAt(),
+                                    m.updatedAt()
+                            ))
+                            .toList();
+                    return ApiResponse.ok(list);
+                });
     }
 
     @PostMapping

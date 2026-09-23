@@ -60,7 +60,9 @@ public class UserQuestionnaireService {
             String options,
             Integer parentSeq,
             String triggerOption,
-            String weight
+            String weight,
+            Integer isSuitable,
+            Integer isExcluded
     ) {
     }
 
@@ -108,7 +110,9 @@ public class UserQuestionnaireService {
                                         q.getOptionsText(),
                                         q.getParentSeq(),
                                         q.getTriggerOption(),
-                                        q.getWeight() == null ? null : q.getWeight().toPlainString()
+                                        q.getWeight() == null ? null : q.getWeight().toPlainString(),
+                                        q.getIsSuitable(),
+                                        q.getIsExcluded()
                                 ))
                                 .toList();
                     }
@@ -140,7 +144,9 @@ public class UserQuestionnaireService {
                                     q.getOptionsText(),
                                     q.getParentSeq(),
                                     q.getTriggerOption(),
-                                    q.getWeight() == null ? null : q.getWeight().toPlainString()
+                                    q.getWeight() == null ? null : q.getWeight().toPlainString(),
+                                    q.getIsSuitable(),
+                                    q.getIsExcluded()
                             ))
                             .toList();
 

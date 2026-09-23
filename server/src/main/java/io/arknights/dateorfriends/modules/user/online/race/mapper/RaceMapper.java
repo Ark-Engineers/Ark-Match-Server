@@ -55,6 +55,12 @@ public interface RaceMapper {
             """)
     int updateDurations(RaceDO race);
 
+    @Select("SELECT COUNT(1) FROM horse_race")
+    long countAll();
+
+    @Select("SELECT COUNT(1) FROM horse_race WHERE status='ACTIVE'")
+    long countActive();
+
     @Update("UPDATE horse_race SET status=#{status} WHERE id=#{id}")
     int updateStatus(@Param("id") long id, @Param("status") String status);
 }

@@ -15,12 +15,18 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import org.apache.poi.ss.usermodel.BorderStyle;
 import org.apache.poi.ss.usermodel.Cell;
+import org.apache.poi.ss.usermodel.CellStyle;
 import org.apache.poi.ss.usermodel.CellType;
 import org.apache.poi.ss.usermodel.ClientAnchor;
 import org.apache.poi.ss.usermodel.Comment;
 import org.apache.poi.ss.usermodel.CreationHelper;
 import org.apache.poi.ss.usermodel.Drawing;
+import org.apache.poi.ss.usermodel.FillPatternType;
+import org.apache.poi.ss.usermodel.Font;
+import org.apache.poi.ss.usermodel.HorizontalAlignment;
+import org.apache.poi.ss.usermodel.IndexedColors;
 import org.apache.poi.ss.usermodel.Row;
 import org.apache.poi.ss.usermodel.Sheet;
 import org.apache.poi.ss.usermodel.Workbook;
@@ -68,7 +74,9 @@ public class QuestionnaireService {
             String options,
             Integer parentSeq,
             String triggerOption,
-            BigDecimal weight
+            BigDecimal weight,
+            Integer isSuitable,
+            Integer isExcluded
     ) {
     }
 
@@ -89,7 +97,9 @@ public class QuestionnaireService {
             List<String> options,
             Integer parentSeq,
             String triggerOption,
-            BigDecimal weight
+            BigDecimal weight,
+            Integer isSuitable,
+            Integer isExcluded
     ) {
     }
 
@@ -162,7 +172,9 @@ public class QuestionnaireService {
                                 splitOptions(item.getOptionsText()),
                                 parentSeq,
                                 item.getTriggerOption(),
-                                item.getWeight()
+                                item.getWeight(),
+                                item.getIsSuitable(),
+                                item.getIsExcluded()
                         ));
                     }
                     return new PreviewResponse(q.getId(), q.getTitle(), q.getSubtitle(), out);
@@ -201,6 +213,8 @@ public class QuestionnaireService {
                         row.setParentSeq(qi.parentSeq() == null ? 0 : qi.parentSeq());
                         row.setTriggerOption(normalize(qi.triggerOption()));
                         row.setWeight(qi.weight());
+                        row.setIsSuitable(0);
+                        row.setIsExcluded(0);
                         items.add(row);
                     }
                     if (!items.isEmpty()) {
@@ -246,6 +260,8 @@ public class QuestionnaireService {
                         row.setParentSeq(qi.parentSeq() == null ? 0 : qi.parentSeq());
                         row.setTriggerOption(normalize(qi.triggerOption()));
                         row.setWeight(qi.weight());
+                        row.setIsSuitable(qi.isSuitable() == null ? 0 : qi.isSuitable());
+                        row.setIsExcluded(qi.isExcluded() == null ? 0 : qi.isExcluded());
                         items.add(row);
                     }
                     if (!items.isEmpty()) {
@@ -320,6 +336,9 @@ public class QuestionnaireService {
     public Mono<byte[]> exportTemplate() {
         return Mono.fromCallable(() -> {
                     try (var wb = new XSSFWorkbook()) {
+                        var headerStyle = createHeaderStyle(wb);
+                        var sampleStyle = createSampleStyle(wb);
+
                         var sheet = wb.createSheet("问题");
                         var header = sheet.createRow(0);
                         var titles = List.of(
@@ -332,10 +351,14 @@ public class QuestionnaireService {
                                 "权重*"
                         );
                         for (int i = 0; i < titles.size(); i++) {
-                            header.createCell(i, CellType.STRING).setCellValue(titles.get(i));
-                            sheet.setColumnWidth(i, 20 * 256);
+                            var cell = header.createCell(i, CellType.STRING);
+                            cell.setCellValue(titles.get(i));
+                            cell.setCellStyle(headerStyle);
+                            sheet.setColumnWidth(i, 22 * 256);
                         }
                         addHeaderComments(wb, sheet, header);
+
+                        writeSampleRows(sheet, sampleStyle);
 
                         try (var out = new ByteArrayOutputStream()) {
                             wb.write(out);
@@ -344,6 +367,58 @@ public class QuestionnaireService {
                     }
                 })
                 .subscribeOn(Schedulers.boundedElastic());
+    }
+
+    private CellStyle createHeaderStyle(Workbook wb) {
+        var style = wb.createCellStyle();
+        var font = wb.createFont();
+        font.setBold(true);
+        font.setFontHeightInPoints((short) 11);
+        style.setFont(font);
+        style.setFillForegroundColor(IndexedColors.PALE_BLUE.getIndex());
+        style.setFillPattern(FillPatternType.SOLID_FOREGROUND);
+        style.setAlignment(HorizontalAlignment.CENTER);
+        style.setBorderBottom(BorderStyle.THIN);
+        style.setBorderTop(BorderStyle.THIN);
+        style.setBorderLeft(BorderStyle.THIN);
+        style.setBorderRight(BorderStyle.THIN);
+        return style;
+    }
+
+    private CellStyle createSampleStyle(Workbook wb) {
+        var style = wb.createCellStyle();
+        var font = wb.createFont();
+        font.setColor(IndexedColors.GREY_50_PERCENT.getIndex());
+        font.setItalic(true);
+        style.setFont(font);
+        style.setFillForegroundColor(IndexedColors.GREY_25_PERCENT.getIndex());
+        style.setFillPattern(FillPatternType.SOLID_FOREGROUND);
+        style.setBorderBottom(BorderStyle.THIN);
+        style.setBorderTop(BorderStyle.THIN);
+        style.setBorderLeft(BorderStyle.THIN);
+        style.setBorderRight(BorderStyle.THIN);
+        return style;
+    }
+
+    private void writeSampleRows(Sheet sheet, CellStyle style) {
+        var samples = new String[][]{
+                {"", "你的性别是？", "单选", "男|女", "", "", "10"},
+                {"", "你的年龄段是？", "单选", "18岁以下|18-25岁|26-35岁|36岁以上", "", "", "15"},
+                {"", "你的监护人是否知情？", "单选", "是|否", "2", "18岁以下", "5"},
+                {"", "你感兴趣的社交活动有？", "多选_3", "聚餐|桌游|户外运动|看电影|唱歌", "", "", "25"},
+                {"", "简单介绍一下你自己", "填空", "", "", "", "20"},
+                {"", "你是否愿意参加线下活动？", "判断", "", "", "", "15"},
+                {"", "你偏好的活动频率？", "单选", "每周一次|每两周一次|每月一次", "6", "是", "10"},
+        };
+        for (int i = 0; i < samples.length; i++) {
+            var row = sheet.getRow(i + 1);
+            if (row == null) row = sheet.createRow(i + 1);
+            for (int j = 0; j < samples[i].length; j++) {
+                var cell = row.createCell(j, CellType.STRING);
+                cell.setCellValue(samples[i][j]);
+                cell.setCellStyle(style);
+            }
+        }
     }
 
     private QuestionnaireItem toItem(QuestionnaireDO q) {
@@ -369,7 +444,9 @@ public class QuestionnaireService {
                 q.getOptionsText(),
                 parentSeq,
                 q.getTriggerOption(),
-                q.getWeight()
+                q.getWeight(),
+                q.getIsSuitable(),
+                q.getIsExcluded()
         );
     }
 
@@ -620,7 +697,7 @@ public class QuestionnaireService {
         }
 
         return rows.stream()
-                .map(r -> new QuestionItem(r.seq(), r.question(), r.type(), r.options(), r.parentSeq(), r.triggerOption(), r.weight()))
+                .map(r -> new QuestionItem(r.seq(), r.question(), r.type(), r.options(), r.parentSeq(), r.triggerOption(), r.weight(), 0, 0))
                 .toList();
     }
 
